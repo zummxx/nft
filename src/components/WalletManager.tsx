@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, Plus, Trash2, Key, CheckSquare, Square, RefreshCw, ExternalLink, ShieldAlert, Sparkles, Copy, Check } from 'lucide-react';
+import { Wallet, Plus, Trash2, Key, CheckSquare, Square, RefreshCw, ExternalLink, ShieldAlert, Sparkles, Copy, Check, Clipboard } from 'lucide-react';
 import { WalletAccount, ChainConfig } from '../types';
 import { formatAddress } from '../utils/seadrop';
 import { ethers } from 'ethers';
@@ -429,9 +429,29 @@ export const WalletManager: React.FC<WalletManagerProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-300 flex justify-between">
-                <span>私钥列表 (每行一个私钥，支持带或不带 0x)</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-300">
+                  私钥列表 (每行一个私钥，支持带或不带 0x)
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text && text.trim()) {
+                        setImportText(text.trim());
+                      }
+                    } catch (err) {
+                      console.warn('Clipboard read failed:', err);
+                    }
+                  }}
+                  className="px-2 py-0.5 text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/60 rounded flex items-center gap-1 transition-colors"
+                  title="从剪贴板一键粘贴私钥"
+                >
+                  <Clipboard className="w-3 h-3" />
+                  <span>一键粘贴</span>
+                </button>
+              </div>
               <textarea
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}

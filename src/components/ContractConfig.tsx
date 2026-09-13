@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ExternalLink, Clock, DollarSign, Users, AlertTriangle, CheckCircle, Flame, Sparkles, Copy, Check } from 'lucide-react';
+import { Search, ExternalLink, Clock, DollarSign, Users, AlertTriangle, CheckCircle, Flame, Sparkles, Copy, Check, Clipboard } from 'lucide-react';
 import { ChainConfig, PublicDropData } from '../types';
 import { DEMO_CONTRACTS } from '../constants/chains';
 import { formatAddress } from '../utils/seadrop';
@@ -51,6 +51,17 @@ export const ContractConfig: React.FC<ContractConfigProps> = ({
     });
   };
 
+  const handlePasteContract = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        setContractAddress(text.trim());
+      }
+    } catch (e) {
+      console.warn('Clipboard read failed:', e);
+    }
+  };
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -100,16 +111,29 @@ export const ContractConfig: React.FC<ContractConfigProps> = ({
               value={contractAddress}
               onChange={(e) => setContractAddress(e.target.value.trim())}
               placeholder="0x... 输入 NFT 合约地址"
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3.5 py-2.5 text-xs sm:text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-lg pl-3.5 pr-20 py-2.5 text-xs sm:text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
             />
-            {contractAddress && (
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <button
-                onClick={() => setContractAddress('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-300"
+                type="button"
+                onClick={handlePasteContract}
+                className="px-2 py-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/60 rounded flex items-center gap-1 transition-colors"
+                title="鼠标一键粘贴合约地址"
               >
-                清除
+                <Clipboard className="w-3 h-3" />
+                <span>粘贴</span>
               </button>
-            )}
+              {contractAddress && (
+                <button
+                  type="button"
+                  onClick={() => setContractAddress('')}
+                  className="px-1.5 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 rounded transition-colors"
+                  title="清空输入"
+                >
+                  清除
+                </button>
+              )}
+            </div>
           </div>
 
           <button

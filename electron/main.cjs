@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, shell, Menu, MenuItem } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -27,7 +27,6 @@ function createWindow() {
   });
 
   // Calculate correct dist/index.html path
-  // Since main.cjs is inside /electron directory, app root is one level up
   let indexPath = path.join(__dirname, '..', 'dist', 'index.html');
   if (!fs.existsSync(indexPath)) {
     indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
@@ -38,6 +37,27 @@ function createWindow() {
   } else {
     mainWindow.loadFile(indexPath);
   }
+
+  // Handle right-click context menu (Cut, Copy, Paste, Select All)
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const menu = new Menu();
+
+    if (params.isEditable) {
+      menu.append(new MenuItem({ label: '粘贴 (Paste)', role: 'paste' }));
+      menu.append(new MenuItem({ label: '复制 (Copy)', role: 'copy' }));
+      menu.append(new MenuItem({ label: '剪切 (Cut)', role: 'cut' }));
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({ label: '全选 (Select All)', role: 'selectAll' }));
+    } else if (params.selectionText && params.selectionText.trim().length > 0) {
+      menu.append(new MenuItem({ label: '复制 (Copy)', role: 'copy' }));
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({ label: '全选 (Select All)', role: 'selectAll' }));
+    } else {
+      menu.append(new MenuItem({ label: '重新加载 (Reload)', role: 'reload' }));
+    }
+
+    menu.popup(mainWindow);
+  });
 
   // Handle load errors
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
