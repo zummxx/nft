@@ -34,6 +34,81 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     iconColor: '#7C3AED',
     isTestnet: false,
   },
+  {
+    id: 8453,
+    name: 'Base Mainnet',
+    nameZh: 'Base 主网',
+    nativeSymbol: 'ETH',
+    rpcUrl: 'https://mainnet.base.org',
+    fallbackRpcs: [
+      'https://base.publicnode.com',
+      'https://1rpc.io/base'
+    ],
+    explorerUrl: 'https://basescan.org',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#0052FF',
+    isTestnet: false,
+  },
+  {
+    id: 1,
+    name: 'Ethereum Mainnet',
+    nameZh: '以太坊主网',
+    nativeSymbol: 'ETH',
+    rpcUrl: 'https://eth.llamarpc.com',
+    fallbackRpcs: [
+      'https://ethereum.publicnode.com',
+      'https://1rpc.io/eth'
+    ],
+    explorerUrl: 'https://etherscan.io',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#627EEA',
+    isTestnet: false,
+  },
+  {
+    id: 42161,
+    name: 'Arbitrum One',
+    nameZh: 'Arbitrum',
+    nativeSymbol: 'ETH',
+    rpcUrl: 'https://arb1.arbitrum.io/rpc',
+    fallbackRpcs: [
+      'https://arbitrum.publicnode.com',
+      'https://1rpc.io/arb'
+    ],
+    explorerUrl: 'https://arbiscan.io',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#28A0F0',
+    isTestnet: false,
+  },
+  {
+    id: 10,
+    name: 'Optimism Mainnet',
+    nameZh: 'OP Mainnet',
+    nativeSymbol: 'ETH',
+    rpcUrl: 'https://mainnet.optimism.io',
+    fallbackRpcs: [
+      'https://optimism.publicnode.com',
+      'https://1rpc.io/op'
+    ],
+    explorerUrl: 'https://optimistic.etherscan.io',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#FF0420',
+    isTestnet: false,
+  },
+  {
+    id: 137,
+    name: 'Polygon PoS',
+    nameZh: 'Polygon',
+    nativeSymbol: 'POL',
+    rpcUrl: 'https://polygon-rpc.com',
+    fallbackRpcs: [
+      'https://polygon.publicnode.com',
+      'https://1rpc.io/matic'
+    ],
+    explorerUrl: 'https://polygonscan.com',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#8247E5',
+    isTestnet: false,
+  },
 ];
 
 export const SEADROP_ABI = [

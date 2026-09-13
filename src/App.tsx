@@ -33,13 +33,30 @@ import { ethers } from 'ethers';
 export default function App() {
   // Chain state - Dedicated to Robinhood Chain
   const [currentChain, setCurrentChain] = useState<ChainConfig>(SUPPORTED_CHAINS[0]);
-  const [customRpc, setCustomRpc] = useState<string>(() => {
+  const [customRpcs, setCustomRpcs] = useState<Record<number, string>>(() => {
     try {
-      return localStorage.getItem('nft_sniper_custom_rpc') || '';
-    } catch {
-      return '';
-    }
+      const saved = localStorage.getItem('nft_sniper_custom_rpcs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      }
+      const legacy = localStorage.getItem('nft_sniper_custom_rpc');
+      if (legacy && legacy.trim()) {
+        return { 4663: legacy.trim() };
+      }
+    } catch {}
+    return {};
   });
+
+  // Active custom RPC for currently selected chain (isolated per chain)
+  const activeCustomRpc = customRpcs[currentChain.id] || '';
+
+  // Save customRpcs map to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('nft_sniper_custom_rpcs', JSON.stringify(customRpcs));
+    } catch {}
+  }, [customRpcs]);
 
   // Contract & SeaDrop State - default to HoodBoy contract on Robinhood
   const [contractAddress, setContractAddress] = useState<string>(() => {
@@ -178,7 +195,12 @@ export default function App() {
   // Switch Chain handler
   const handleSelectChain = (chain: ChainConfig) => {
     setCurrentChain(chain);
-    addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id})`);
+    const dedicatedRpc = customRpcs[chain.id];
+    if (dedicatedRpc) {
+      addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id}) · 自动启用该网络专属私有 RPC`);
+    } else {
+      addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id}) · 使用公共默认 RPC 节点`);
+    }
     
     // Auto match demo contract if available
     const matchDemo = DEMO_CONTRACTS.find(d => d.chainId === chain.id);
@@ -198,7 +220,7 @@ export default function App() {
     try {
       const updated = await Promise.all(
         wallets.map(async (w) => {
-          const { wei, formatted } = await fetchWalletBalance(w.address, currentChain, customRpc);
+          const { wei, formatted } = await fetchWalletBalance(w.address, currentChain, activeCustomRpc);
           return {
             ...w,
             balanceWei: wei,
@@ -227,7 +249,7 @@ export default function App() {
     addLog('info', `正在从 ${currentChain.name} SeaDrop 协议读取合约: ${contractAddress}`);
 
     try {
-      const details = await fetchContractDetails(contractAddress, currentChain, customRpc);
+      const details = await fetchContractDetails(contractAddress, currentChain, activeCustomRpc);
       setNftName(details.name);
       setNftSymbol(details.symbol);
       setDropData(details.dropData);
@@ -298,7 +320,7 @@ export default function App() {
         sniperConfig.quantityPerWallet,
         dropData,
         currentChain,
-        customRpc
+        activeCustomRpc
       );
 
       if (res.success) {
@@ -352,7 +374,7 @@ export default function App() {
           dropData,
           gasConfig,
           currentChain,
-          customRpc
+          activeCustomRpc
         );
       })
     );
@@ -465,6 +487,41 @@ export default function App() {
     addLog('warn', '已取消定时抢购倒计时监听。');
   };
 
+  // RPC Management Handlers (Per-chain isolation)
+  const handleSaveRpc = (chainId: number, rpcUrl: string) => {
+    setCustomRpcs(prev => {
+      const next = { ...prev };
+      if (rpcUrl && rpcUrl.trim()) {
+        next[chainId] = rpcUrl.trim();
+      } else {
+        delete next[chainId];
+      }
+      return next;
+    });
+    const chain = SUPPORTED_CHAINS.find(c => c.id === chainId);
+    const name = chain ? chain.nameZh : `Chain ${chainId}`;
+    if (rpcUrl && rpcUrl.trim()) {
+      addLog('info', `已为 [${name}] 保存专属独享私有 RPC: ${rpcUrl.trim()}`);
+    } else {
+      addLog('info', `已将 [${name}] 恢复为公共默认节点`);
+    }
+  };
+
+  const handleResetRpc = (chainId: number) => {
+    setCustomRpcs(prev => {
+      const next = { ...prev };
+      delete next[chainId];
+      return next;
+    });
+    const chain = SUPPORTED_CHAINS.find(c => c.id === chainId);
+    addLog('info', `已重置 [${chain ? chain.nameZh : chainId}] 为公共默认节点`);
+  };
+
+  const handleClearAllRpcs = () => {
+    setCustomRpcs({});
+    addLog('info', '已清空所有公链的私有 RPC 配置，恢复为官方公共节点');
+  };
+
   const selectedWalletsCount = wallets.filter(w => w.selected).length;
 
   return (
@@ -478,7 +535,7 @@ export default function App() {
         onOpenRpcModal={() => setShowRpcModal(true)}
         onRefreshBalances={handleRefreshBalances}
         isRefreshing={isRefreshingBalances}
-        customRpc={customRpc}
+        customRpc={activeCustomRpc}
       />
 
       {/* Main Content Dashboard */}
@@ -547,7 +604,7 @@ export default function App() {
             NFT Public Mint (SeaDrop Sniper) · 中文重构版 · 基于 morsyxbt/nft-public-mint
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>支持 Robinhood Chain · Ink (Kraken L2) · SeaDrop</span>
+            <span>支持 Robinhood Chain · Ink (Kraken L2) · Base · 以太坊 · SeaDrop</span>
             <button
               onClick={() => setShowDocs(true)}
               className="text-emerald-400 hover:underline"
@@ -562,16 +619,12 @@ export default function App() {
       {showDocs && <DocModal onClose={() => setShowDocs(false)} />}
       {showRpcModal && (
         <CustomRpcModal
-          chain={currentChain}
-          customRpc={customRpc}
-          onSaveRpc={(rpc) => {
-            setCustomRpc(rpc);
-            if (rpc) {
-              addLog('info', `已设置私有 RPC: ${rpc}`);
-            } else {
-              addLog('info', `已恢复公共默认 RPC`);
-            }
-          }}
+          currentChain={currentChain}
+          customRpcs={customRpcs}
+          onSaveRpc={handleSaveRpc}
+          onResetRpc={handleResetRpc}
+          onClearAllRpcs={handleClearAllRpcs}
+          onSelectChain={handleSelectChain}
           onClose={() => setShowRpcModal(false)}
         />
       )}
