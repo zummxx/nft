@@ -19,11 +19,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm install
 
       - name: Build and package Windows Desktop EXE
         run: npm run package:win
@@ -33,25 +32,28 @@ jobs:
         run: |
           Compress-Archive -Path "release/NFTPublicMintSniper-win32-x64/*" -DestinationPath "NFTPublicMintSniper-Windows-x64.zip" -Force
 
-      - name: Upload Artifact
+      - name: Upload Artifact (可在 Actions 详情页直接下载)
         uses: actions/upload-artifact@v4
         with:
           name: NFTPublicMintSniper-Windows-x64
           path: NFTPublicMintSniper-Windows-x64.zip
           retention-days: 30
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        continue-on-error: true
         with:
-          tag_name: v1.0.0
-          name: Release v1.0.0 (Windows Desktop Client)
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "NFT Public Mint Sniper Windows 桌面版 (Build ${{ github.run_number }})"
+          draft: false
+          prerelease: false
           body: |
-            ## NFT Public Mint Sniper (SeaDrop 定时抢购工具桌面版)
+            ## NFT Public Mint Sniper (SeaDrop 定时抢购工具 Windows 桌面版)
             
             - 针对 Windows x64 系统编译原生桌面客户端
             - 包含完整的离线 Chromium 引擎，无跨域限制直连 RPC
             - 支持 Robinhood Chain、Ink (Kraken L2)、Ethereum、Base、OP、Arbitrum、Polygon
+            - 支持多链专属 RPC 隔离配置与实时 Ping 测速检测
             - 下载下方 ZIP 压缩包解压后，直接双击 `NFTPublicMintSniper.exe` 即可使用，无需安装 Node.js！
           files: NFTPublicMintSniper-Windows-x64.zip
         env:
