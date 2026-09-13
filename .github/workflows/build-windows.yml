@@ -22,9 +22,13 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) { Remove-Item package-lock.json -Force }
+          npm install --include=optional
+          npm install --save-optional @rollup/rollup-win32-x64-msvc
 
-      - name: Build and package Windows Desktop EXE
+      - name: Build frontend & package Windows Desktop EXE
         run: npm run package:win
 
       - name: Compress packaged executable
