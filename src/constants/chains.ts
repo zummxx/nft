@@ -54,10 +54,11 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     name: 'Ethereum Mainnet',
     nameZh: '以太坊主网',
     nativeSymbol: 'ETH',
-    rpcUrl: 'https://eth.llamarpc.com',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
     fallbackRpcs: [
-      'https://ethereum.publicnode.com',
-      'https://1rpc.io/eth'
+      'https://eth.drpc.org',
+      'https://1rpc.io/eth',
+      'https://rpc.payload.de'
     ],
     explorerUrl: 'https://etherscan.io',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
@@ -99,10 +100,10 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     name: 'Polygon PoS',
     nameZh: 'Polygon',
     nativeSymbol: 'POL',
-    rpcUrl: 'https://polygon-rpc.com',
+    rpcUrl: 'https://polygon-bor-rpc.publicnode.com',
     fallbackRpcs: [
-      'https://polygon.publicnode.com',
-      'https://1rpc.io/matic'
+      'https://1rpc.io/matic',
+      'https://polygon.drpc.org'
     ],
     explorerUrl: 'https://polygonscan.com',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
@@ -114,6 +115,7 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
 export const SEADROP_ABI = [
   'function getPublicDrop(address nftContract) external view returns (tuple(uint80 mintPrice, uint48 startTime, uint48 endTime, uint16 maxTotalMintableByWallet, uint16 feeBps, bool restrictFeeRecipients))',
   'function getFeeRecipient(address nftContract) external view returns (address)',
+  'function getAllowedFeeRecipients(address nftContract) external view returns (address[])',
   'function mintPublic(address nftContract, address feeRecipient, address minterIfNotPayer, uint256 quantity) external payable',
   'function getMintStats(address nftContract, address minter) external view returns (uint256 minterNumMinted, uint256 currentTotalMinted, uint256 maxTotalMintableByWallet)',
   // SeaDrop & ERC721SeaDrop Errors

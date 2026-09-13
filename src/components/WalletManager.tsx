@@ -10,6 +10,7 @@ interface WalletManagerProps {
   chain: ChainConfig;
   onRefreshBalances: () => void;
   isRefreshing: boolean;
+  maxHeightClass?: string;
 }
 
 export const WalletManager: React.FC<WalletManagerProps> = ({
@@ -18,6 +19,7 @@ export const WalletManager: React.FC<WalletManagerProps> = ({
   chain,
   onRefreshBalances,
   isRefreshing,
+  maxHeightClass = 'max-h-80 sm:max-h-[380px]',
 }) => {
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [importText, setImportText] = React.useState('');
@@ -259,7 +261,7 @@ export const WalletManager: React.FC<WalletManagerProps> = ({
           </p>
         </div>
       ) : (
-        <div className="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+        <div className={`${maxHeightClass} overflow-y-auto space-y-2 pr-1 custom-scrollbar`}>
           {wallets.map((wallet, idx) => (
             <div
               key={wallet.id}

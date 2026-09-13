@@ -10,6 +10,7 @@ interface SniperSettingsProps {
   chain: ChainConfig;
   dropData: PublicDropData | null;
   selectedWalletsCount: number;
+  layoutMode?: 'cockpit' | 'stack';
 }
 
 export const SniperSettings: React.FC<SniperSettingsProps> = ({
@@ -20,6 +21,7 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
   chain,
   dropData,
   selectedWalletsCount,
+  layoutMode = 'cockpit',
 }) => {
   const [localDateTime, setLocalDateTime] = React.useState(() => {
     if (sniperConfig.targetTimestamp > 0) {
@@ -109,7 +111,7 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className={layoutMode === 'cockpit' ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-5'}>
         {/* Left Column: Sniper Mode & Timing */}
         <div className="space-y-4">
           <div>

@@ -9,6 +9,7 @@ import { ContractConfig } from './components/ContractConfig';
 import { WalletManager } from './components/WalletManager';
 import { SniperSettings } from './components/SniperSettings';
 import { ActionControls } from './components/ActionControls';
+import { SniperControlBar } from './components/SniperControlBar';
 import { TerminalLogs } from './components/TerminalLogs';
 import { DocModal } from './components/DocModal';
 import { CustomRpcModal } from './components/CustomRpcModal';
@@ -26,7 +27,8 @@ import {
   fetchWalletBalance,
   simulateMint,
   executeMint,
-  formatAddress
+  formatAddress,
+  parseRpcUrls
 } from './utils/seadrop';
 import { ethers } from 'ethers';
 
@@ -138,11 +140,25 @@ export default function App() {
     }
   ]);
 
-  // Modals
+  // Modals & Layout
   const [showDocs, setShowDocs] = useState<boolean>(false);
   const [showRpcModal, setShowRpcModal] = useState<boolean>(false);
+  const [layoutMode, setLayoutMode] = useState<'cockpit' | 'stack'>(() => {
+    try {
+      const saved = localStorage.getItem('nft_sniper_layout_mode');
+      if (saved === 'cockpit' || saved === 'stack') return saved;
+    } catch {}
+    return 'cockpit';
+  });
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Save layout preference
+  useEffect(() => {
+    try {
+      localStorage.setItem('nft_sniper_layout_mode', layoutMode);
+    } catch {}
+  }, [layoutMode]);
 
   // Save wallets to local storage safely
   useEffect(() => {
@@ -196,10 +212,13 @@ export default function App() {
   const handleSelectChain = (chain: ChainConfig) => {
     setCurrentChain(chain);
     const dedicatedRpc = customRpcs[chain.id];
-    if (dedicatedRpc) {
-      addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id}) · 自动启用该网络专属私有 RPC`);
+    const rpcList = parseRpcUrls(dedicatedRpc);
+    if (rpcList.length > 1) {
+      addLog('info', `已切换至网络: ${chain.nameZh} · 已激活多节点并发负载均衡 (${rpcList.length} 个独立 RPC)`);
+    } else if (rpcList.length === 1) {
+      addLog('info', `已切换至网络: ${chain.nameZh} · 自动启用该网络专属私有 RPC`);
     } else {
-      addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id}) · 使用公共默认 RPC 节点`);
+      addLog('info', `已切换至网络: ${chain.nameZh} · 使用公共默认 RPC 节点`);
     }
     
     // Auto match demo contract if available
@@ -217,10 +236,13 @@ export default function App() {
     setIsRefreshingBalances(true);
     addLog('info', `正在查询 ${wallets.length} 个钱包在 ${currentChain.name} 的原生余额...`);
 
+    const rpcList = parseRpcUrls(activeCustomRpc);
+
     try {
       const updated = await Promise.all(
-        wallets.map(async (w) => {
-          const { wei, formatted } = await fetchWalletBalance(w.address, currentChain, activeCustomRpc);
+        wallets.map(async (w, idx) => {
+          const assignedRpc = rpcList.length > 0 ? rpcList[idx % rpcList.length] : activeCustomRpc;
+          const { wei, formatted } = await fetchWalletBalance(w.address, currentChain, assignedRpc);
           return {
             ...w,
             balanceWei: wei,
@@ -356,26 +378,40 @@ export default function App() {
     setIsCountdownActive(false);
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
 
-    addLog(
-      'sniper',
-      `🚀 启动并发抢购！正在向网络齐发 ${selected.length} 笔交易，每钱包铸造 ${sniperConfig.quantityPerWallet} 个...`
-    );
+    const rpcList = parseRpcUrls(activeCustomRpc);
+
+    if (rpcList.length > 1) {
+      addLog(
+        'sniper',
+        `⚡ 已激活双/多 Alchemy 轮询负载均衡: 检测到 ${rpcList.length} 个独立 RPC 节点，正在为 ${selected.length} 个钱包均匀分流，并发 RPS 翻倍，零限速风险！`
+      );
+    } else {
+      addLog(
+        'sniper',
+        `🚀 启动并发抢购！正在向网络齐发 ${selected.length} 笔交易，每钱包铸造 ${sniperConfig.quantityPerWallet} 个...`
+      );
+    }
 
     // Set all to pending
     setWallets(prev => prev.map(w => w.selected ? { ...w, status: 'pending', errorMessage: undefined } : w));
 
-    // Parallel fire via Promise.allSettled
+    // Parallel fire via Promise.allSettled with round-robin RPC distribution
     const results = await Promise.allSettled(
-      selected.map(async (wallet) => {
-        return executeMint(
+      selected.map(async (wallet, walletIndex) => {
+        const assignedRpc = rpcList.length > 0 ? rpcList[walletIndex % rpcList.length] : activeCustomRpc;
+        const nodeIndex = rpcList.length > 1 ? (walletIndex % rpcList.length) + 1 : undefined;
+
+        const res = await executeMint(
           wallet,
           contractAddress,
           sniperConfig.quantityPerWallet,
           dropData,
           gasConfig,
           currentChain,
-          activeCustomRpc
+          assignedRpc
         );
+
+        return { ...res, nodeIndex };
       })
     );
 
@@ -387,6 +423,7 @@ export default function App() {
       if (res.status === 'fulfilled') {
         succCount++;
         const txHash = res.value.txHash;
+        const nodeTag = res.value.nodeIndex ? ` [由 RPC 节点 #${res.value.nodeIndex} 广播]` : '';
         setWallets(prev => prev.map(w => w.id === targetWallet.id ? {
           ...w,
           status: 'success',
@@ -394,7 +431,7 @@ export default function App() {
         } : w));
         addLog(
           'success',
-          `✅ 钱包 ${formatAddress(targetWallet.address)} 铸造成功！交易已确认`,
+          `✅ 钱包 ${formatAddress(targetWallet.address)} 铸造成功！交易已确认${nodeTag}`,
           txHash,
           targetWallet.address
         );
@@ -536,35 +573,14 @@ export default function App() {
         onRefreshBalances={handleRefreshBalances}
         isRefreshing={isRefreshingBalances}
         customRpc={activeCustomRpc}
+        layoutMode={layoutMode}
+        onToggleLayoutMode={() => setLayoutMode(prev => prev === 'cockpit' ? 'stack' : 'cockpit')}
       />
 
       {/* Main Content Dashboard */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
-        {/* Module 1: Contract Inspector */}
-        <ContractConfig
-          contractAddress={contractAddress}
-          setContractAddress={setContractAddress}
-          onFetchDrop={handleFetchContract}
-          isLoading={isLoadingContract}
-          dropData={dropData}
-          nftName={nftName}
-          nftSymbol={nftSymbol}
-          chain={currentChain}
-          onApplyScheduleTime={handleApplyScheduleTime}
-          error={contractError}
-        />
-
-        {/* Module 2: Wallet Manager */}
-        <WalletManager
-          wallets={wallets}
-          setWallets={setWallets}
-          chain={currentChain}
-          onRefreshBalances={handleRefreshBalances}
-          isRefreshing={isRefreshingBalances}
-        />
-
-        {/* Module 3: Sniper & Gas Settings */}
-        <SniperSettings
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-6 space-y-4">
+        {/* Top Full-Width Row: 抢购控制横栏 (Sniper Controls Bar) */}
+        <SniperControlBar
           sniperConfig={sniperConfig}
           setSniperConfig={setSniperConfig}
           gasConfig={gasConfig}
@@ -572,10 +588,6 @@ export default function App() {
           chain={currentChain}
           dropData={dropData}
           selectedWalletsCount={selectedWalletsCount}
-        />
-
-        {/* Module 4: Action Controls & Countdown Bar */}
-        <ActionControls
           onSimulate={handleSimulate}
           onStartSnipe={handleStartSnipe}
           onCancelSnipe={handleCancelSnipe}
@@ -583,18 +595,107 @@ export default function App() {
           isExecuting={isExecuting}
           isCountdownActive={isCountdownActive}
           countdownSeconds={countdownSeconds}
-          selectedWalletsCount={selectedWalletsCount}
-          dropData={dropData}
-          sniperConfig={sniperConfig}
-          chain={currentChain}
         />
 
-        {/* Module 5: Execution Terminal Logs */}
-        <TerminalLogs
-          logs={logs}
-          onClearLogs={() => setLogs([])}
-          chain={currentChain}
-        />
+        {layoutMode === 'cockpit' ? (
+          /* Bottom 3-Column Layout: 左钱包 · 中日志 · 右合约 (Left: Wallets, Center: Logs, Right: Contract) */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            {/* Left Column (4 cols): 钱包管理 */}
+            <div className="lg:col-span-4">
+              <WalletManager
+                wallets={wallets}
+                setWallets={setWallets}
+                chain={currentChain}
+                onRefreshBalances={handleRefreshBalances}
+                isRefreshing={isRefreshingBalances}
+                maxHeightClass="max-h-[460px]"
+              />
+            </div>
+
+            {/* Center Column (4 cols): 链上日志 & 执行终端 */}
+            <div className="lg:col-span-4">
+              <TerminalLogs
+                logs={logs}
+                onClearLogs={() => setLogs([])}
+                chain={currentChain}
+                heightClass="h-[460px]"
+              />
+            </div>
+
+            {/* Right Column (4 cols): 查询与解析合约 */}
+            <div className="lg:col-span-4">
+              <ContractConfig
+                contractAddress={contractAddress}
+                setContractAddress={setContractAddress}
+                onFetchDrop={handleFetchContract}
+                isLoading={isLoadingContract}
+                dropData={dropData}
+                nftName={nftName}
+                nftSymbol={nftSymbol}
+                chain={currentChain}
+                onApplyScheduleTime={handleApplyScheduleTime}
+                error={contractError}
+                compactMode={true}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Classic Stacked View */
+          <div className="space-y-6">
+            <ContractConfig
+              contractAddress={contractAddress}
+              setContractAddress={setContractAddress}
+              onFetchDrop={handleFetchContract}
+              isLoading={isLoadingContract}
+              dropData={dropData}
+              nftName={nftName}
+              nftSymbol={nftSymbol}
+              chain={currentChain}
+              onApplyScheduleTime={handleApplyScheduleTime}
+              error={contractError}
+              compactMode={false}
+            />
+
+            <WalletManager
+              wallets={wallets}
+              setWallets={setWallets}
+              chain={currentChain}
+              onRefreshBalances={handleRefreshBalances}
+              isRefreshing={isRefreshingBalances}
+            />
+
+            <SniperSettings
+              sniperConfig={sniperConfig}
+              setSniperConfig={setSniperConfig}
+              gasConfig={gasConfig}
+              setGasConfig={setGasConfig}
+              chain={currentChain}
+              dropData={dropData}
+              selectedWalletsCount={selectedWalletsCount}
+              layoutMode="stack"
+            />
+
+            <ActionControls
+              onSimulate={handleSimulate}
+              onStartSnipe={handleStartSnipe}
+              onCancelSnipe={handleCancelSnipe}
+              isSimulating={isSimulating}
+              isExecuting={isExecuting}
+              isCountdownActive={isCountdownActive}
+              countdownSeconds={countdownSeconds}
+              selectedWalletsCount={selectedWalletsCount}
+              dropData={dropData}
+              sniperConfig={sniperConfig}
+              chain={currentChain}
+            />
+
+            <TerminalLogs
+              logs={logs}
+              onClearLogs={() => setLogs([])}
+              chain={currentChain}
+            />
+          </div>
+        )}
       </main>
 
       {/* Footer */}

@@ -20,6 +20,7 @@ export interface PublicDropData {
   feeBps: number;
   restrictFeeRecipients: boolean;
   feeRecipient: string;
+  allowedFeeRecipients?: string[];
   isFetched: boolean;
   isActive: boolean;
   isUpcoming: boolean;

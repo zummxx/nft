@@ -1,7 +1,8 @@
 import React from 'react';
-import { Shield, BookOpen, Settings, Zap, CheckCircle2, ChevronDown, RefreshCw } from 'lucide-react';
+import { Shield, BookOpen, Settings, Zap, CheckCircle2, ChevronDown, RefreshCw, LayoutGrid, Columns2, Split } from 'lucide-react';
 import { SUPPORTED_CHAINS } from '../constants/chains';
 import { ChainConfig, WalletAccount } from '../types';
+import { parseRpcUrls } from '../utils/seadrop';
 
 interface HeaderProps {
   currentChain: ChainConfig;
@@ -12,6 +13,8 @@ interface HeaderProps {
   onRefreshBalances: () => void;
   isRefreshing: boolean;
   customRpc?: string;
+  layoutMode?: 'cockpit' | 'stack';
+  onToggleLayoutMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshBalances,
   isRefreshing,
   customRpc,
+  layoutMode = 'cockpit',
+  onToggleLayoutMode,
 }) => {
   const [chainMenuOpen, setChainMenuOpen] = React.useState(false);
 
@@ -116,19 +121,32 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* RPC Config Trigger */}
-          <button
-            id="rpc-config-btn"
-            onClick={onOpenRpcModal}
-            className={`p-2 rounded-lg border text-xs transition-colors flex items-center gap-1.5 ${
-              customRpc
-                ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400'
-                : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-800'
-            }`}
-            title="配置独享私有 RPC 节点"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">{customRpc ? '独享 RPC' : 'RPC 设置'}</span>
-          </button>
+          {(() => {
+            const parsedCount = parseRpcUrls(customRpc).length;
+            return (
+              <button
+                id="rpc-config-btn"
+                onClick={onOpenRpcModal}
+                className={`p-2 rounded-lg border text-xs transition-colors flex items-center gap-1.5 ${
+                  parsedCount > 1
+                    ? 'bg-cyan-950/50 border-cyan-500/40 text-cyan-300 shadow-sm shadow-cyan-950'
+                    : parsedCount === 1
+                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400'
+                    : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+                title={parsedCount > 1 ? `已配置 ${parsedCount} 个节点，开启多钱包轮询负载均衡` : '配置独享私有 RPC 节点'}
+              >
+                {parsedCount > 1 ? (
+                  <Split className="w-3.5 h-3.5 text-cyan-400" />
+                ) : (
+                  <Settings className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden md:inline">
+                  {parsedCount > 1 ? `双/多节点分流 (${parsedCount}x)` : parsedCount === 1 ? '独享 RPC' : 'RPC 设置'}
+                </span>
+              </button>
+            );
+          })()}
 
           {/* Balance Refresh */}
           <button
@@ -143,6 +161,28 @@ export const Header: React.FC<HeaderProps> = ({
               余额: {totalBalance.toFixed(4)} {currentChain.nativeSymbol}
             </span>
           </button>
+
+          {/* Layout Mode Toggle */}
+          {onToggleLayoutMode && (
+            <button
+              id="layout-toggle-btn"
+              onClick={onToggleLayoutMode}
+              className="p-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 rounded-lg text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5"
+              title={layoutMode === 'cockpit' ? '当前：分栏驾驶舱模式 (点击切换为宽屏单栏)' : '当前：宽屏单栏模式 (点击切换为分栏驾驶舱)'}
+            >
+              {layoutMode === 'cockpit' ? (
+                <>
+                  <Columns2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden xl:inline">驾驶舱视图</span>
+                </>
+              ) : (
+                <>
+                  <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden xl:inline">单栏视图</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Docs / Guide */}
           <button

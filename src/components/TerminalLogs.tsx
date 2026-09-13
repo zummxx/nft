@@ -6,12 +6,14 @@ interface TerminalLogsProps {
   logs: LogEntry[];
   onClearLogs: () => void;
   chain: ChainConfig;
+  heightClass?: string;
 }
 
 export const TerminalLogs: React.FC<TerminalLogsProps> = ({
   logs,
   onClearLogs,
   chain,
+  heightClass = 'h-56 sm:h-64',
 }) => {
   const [filter, setFilter] = React.useState<string>('all');
   const [autoScroll, setAutoScroll] = React.useState(true);
@@ -114,7 +116,7 @@ export const TerminalLogs: React.FC<TerminalLogsProps> = ({
       </div>
 
       {/* Terminal Body */}
-      <div className="p-3 sm:p-4 h-56 sm:h-64 overflow-y-auto space-y-1.5 text-xs text-slate-300 custom-scrollbar select-text">
+      <div className={`p-3 sm:p-4 ${heightClass} overflow-y-auto space-y-1.5 text-xs text-slate-300 custom-scrollbar select-text`}>
         {filteredLogs.length === 0 ? (
           <div className="text-slate-600 italic py-8 text-center">
             暂无日志输出。请输入合约地址并点击查询，或点击「模拟校验」开始测试。
