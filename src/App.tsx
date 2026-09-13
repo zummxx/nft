@@ -1,0 +1,580 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Header } from './components/Header';
+import { ContractConfig } from './components/ContractConfig';
+import { WalletManager } from './components/WalletManager';
+import { SniperSettings } from './components/SniperSettings';
+import { ActionControls } from './components/ActionControls';
+import { TerminalLogs } from './components/TerminalLogs';
+import { DocModal } from './components/DocModal';
+import { CustomRpcModal } from './components/CustomRpcModal';
+import { SUPPORTED_CHAINS, DEMO_CONTRACTS } from './constants/chains';
+import {
+  ChainConfig,
+  PublicDropData,
+  WalletAccount,
+  GasConfig,
+  SniperConfig,
+  LogEntry
+} from './types';
+import {
+  fetchContractDetails,
+  fetchWalletBalance,
+  simulateMint,
+  executeMint,
+  formatAddress
+} from './utils/seadrop';
+import { ethers } from 'ethers';
+
+export default function App() {
+  // Chain state - Dedicated to Robinhood Chain
+  const [currentChain, setCurrentChain] = useState<ChainConfig>(SUPPORTED_CHAINS[0]);
+  const [customRpc, setCustomRpc] = useState<string>(() => {
+    try {
+      return localStorage.getItem('nft_sniper_custom_rpc') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  // Contract & SeaDrop State - default to HoodBoy contract on Robinhood
+  const [contractAddress, setContractAddress] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('nft_sniper_contract');
+      if (saved && ethers.isAddress(saved)) return saved;
+    } catch {}
+    return '0x2612147f166f793027370190c77d55439e8eeb39';
+  });
+  const [isLoadingContract, setIsLoadingContract] = useState<boolean>(false);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [nftName, setNftName] = useState<string>('');
+  const [nftSymbol, setNftSymbol] = useState<string>('');
+  const [dropData, setDropData] = useState<PublicDropData | null>(null);
+
+  // Wallets State
+  const [wallets, setWallets] = useState<WalletAccount[]>(() => {
+    // Check localStorage
+    try {
+      const saved = localStorage.getItem('nft_sniper_wallets');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    // Provide 1 generated ephemeral demo wallet for instant testing
+    const demo = ethers.Wallet.createRandom();
+    return [
+      {
+        id: 'demo-1',
+        address: demo.address,
+        privateKey: demo.privateKey,
+        type: 'generated',
+        balanceWei: '0',
+        balanceFormatted: '0',
+        status: 'idle',
+        selected: true,
+      }
+    ];
+  });
+  const [isRefreshingBalances, setIsRefreshingBalances] = useState<boolean>(false);
+
+  // Gas Settings
+  const [gasConfig, setGasConfig] = useState<GasConfig>({
+    preset: 'sniper',
+    maxFeePerGasGwei: 0.2,
+    maxPriorityFeePerGasGwei: 0.05,
+    gasLimitMultiplier: 1.2,
+  });
+
+  // Sniper Timing & Mode Settings
+  const [sniperConfig, setSniperConfig] = useState<SniperConfig>({
+    mode: 'instant',
+    targetTimestamp: 0,
+    triggerAdvanceMs: 250,
+    preSign: true,
+    quantityPerWallet: 1,
+  });
+
+  // Execution & Simulation states
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
+  const [isCountdownActive, setIsCountdownActive] = useState<boolean>(false);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+
+  // Logs
+  const [logs, setLogs] = useState<LogEntry[]>([
+    {
+      id: 'init-log',
+      timestamp: Date.now(),
+      level: 'info',
+      text: 'NFT 公共铸造抢购工具 (NFT Public Mint Sniper) 初始化就绪。'
+    },
+    {
+      id: 'init-log-2',
+      timestamp: Date.now() + 1,
+      level: 'info',
+      text: '默认连接 Base 主网 SeaDrop 合约 (0x00005EA00Ac477B1030CE78506496e8C2dE24bf5)。'
+    }
+  ]);
+
+  // Modals
+  const [showDocs, setShowDocs] = useState<boolean>(false);
+  const [showRpcModal, setShowRpcModal] = useState<boolean>(false);
+
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Save wallets to local storage safely
+  useEffect(() => {
+    try {
+      localStorage.setItem('nft_sniper_wallets', JSON.stringify(wallets));
+    } catch {}
+  }, [wallets]);
+
+  // Save chain preference
+  useEffect(() => {
+    try {
+      localStorage.setItem('nft_sniper_chain_id', String(currentChain.id));
+    } catch {}
+  }, [currentChain.id]);
+
+  // Save contract address
+  useEffect(() => {
+    try {
+      if (contractAddress) {
+        localStorage.setItem('nft_sniper_contract', contractAddress);
+      }
+    } catch {}
+  }, [contractAddress]);
+
+  // Auto-fetch contract and balances on first mount
+  const hasInitializedRef = useRef(false);
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      handleFetchContract();
+      handleRefreshBalances();
+    }
+  }, []);
+
+  // Append a log entry helper
+  const addLog = (level: LogEntry['level'], text: string, txHash?: string, walletAddress?: string) => {
+    setLogs(prev => [
+      ...prev,
+      {
+        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        timestamp: Date.now(),
+        level,
+        text,
+        txHash,
+        walletAddress,
+      }
+    ]);
+  };
+
+  // Switch Chain handler
+  const handleSelectChain = (chain: ChainConfig) => {
+    setCurrentChain(chain);
+    addLog('info', `已切换至网络: ${chain.nameZh} (ID: ${chain.id})`);
+    
+    // Auto match demo contract if available
+    const matchDemo = DEMO_CONTRACTS.find(d => d.chainId === chain.id);
+    if (matchDemo) {
+      setContractAddress(matchDemo.address);
+    }
+    setDropData(null);
+    setContractError(null);
+  };
+
+  // Refresh all balances
+  const handleRefreshBalances = async () => {
+    if (wallets.length === 0) return;
+    setIsRefreshingBalances(true);
+    addLog('info', `正在查询 ${wallets.length} 个钱包在 ${currentChain.name} 的原生余额...`);
+
+    try {
+      const updated = await Promise.all(
+        wallets.map(async (w) => {
+          const { wei, formatted } = await fetchWalletBalance(w.address, currentChain, customRpc);
+          return {
+            ...w,
+            balanceWei: wei,
+            balanceFormatted: formatted,
+          };
+        })
+      );
+      setWallets(updated);
+      addLog('success', `全部钱包余额刷新完成。`);
+    } catch (err: any) {
+      addLog('warn', `刷新部分余额出现异常: ${err?.message || err}`);
+    } finally {
+      setIsRefreshingBalances(false);
+    }
+  };
+
+  // Fetch contract SeaDrop parameters
+  const handleFetchContract = async () => {
+    if (!contractAddress || !ethers.isAddress(contractAddress)) {
+      setContractError('请输入有效的以太坊合约地址 (以 0x 开头的 42 位地址)');
+      return;
+    }
+
+    setIsLoadingContract(true);
+    setContractError(null);
+    addLog('info', `正在从 ${currentChain.name} SeaDrop 协议读取合约: ${contractAddress}`);
+
+    try {
+      const details = await fetchContractDetails(contractAddress, currentChain, customRpc);
+      setNftName(details.name);
+      setNftSymbol(details.symbol);
+      setDropData(details.dropData);
+
+      const priceStr = details.dropData.mintPrice === '0'
+        ? '免费 (Free Mint)'
+        : `${details.dropData.mintPriceFormatted} ${currentChain.nativeSymbol}`;
+      const limitStr = details.dropData.maxTotalMintableByWallet > 0
+        ? `${details.dropData.maxTotalMintableByWallet} 个`
+        : '不限制';
+
+      addLog(
+        'success',
+        `合约解析成功: ${details.name} (${details.symbol}) | 单价: ${priceStr} | 钱包限额: ${limitStr}`
+      );
+
+      if (details.dropData.isUpcoming && details.dropData.startTime > 0) {
+        addLog(
+          'warn',
+          `注意: 该 NFT 公售尚未开启，开售时间为: ${new Date(details.dropData.startTime * 1000).toLocaleString('zh-CN')}。可切换到「定时狙击」模式等待触发。`
+        );
+      } else if (details.dropData.isActive) {
+        addLog('sniper', `🟢 该 NFT 公售目前处于开放状态，可立即发起并发铸造！`);
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      setContractError(msg);
+      addLog('error', `查询合约失败: ${msg}`);
+    } finally {
+      setIsLoadingContract(false);
+    }
+  };
+
+  // Sync schedule target time
+  const handleApplyScheduleTime = (startTime: number) => {
+    setSniperConfig(prev => ({
+      ...prev,
+      mode: 'scheduled',
+      targetTimestamp: startTime,
+    }));
+    addLog('sniper', `已将抢购时间同步对齐至开售时间戳: ${startTime} (${new Date(startTime * 1000).toLocaleString('zh-CN')})`);
+  };
+
+  // Dry Run Simulation
+  const handleSimulate = async () => {
+    const selected = wallets.filter(w => w.selected);
+    if (selected.length === 0) {
+      alert('请勾选至少一个用于模拟校验的钱包');
+      return;
+    }
+    if (!dropData) {
+      alert('请先查询有效的 NFT 合约');
+      return;
+    }
+
+    setIsSimulating(true);
+    addLog('info', `[Dry Run] 开始对选中的 ${selected.length} 个钱包进行链上模拟校验 (eth_call)...`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const w of selected) {
+      setWallets(prev => prev.map(item => item.id === w.id ? { ...item, status: 'simulating' } : item));
+
+      const res = await simulateMint(
+        w,
+        contractAddress,
+        sniperConfig.quantityPerWallet,
+        dropData,
+        currentChain,
+        customRpc
+      );
+
+      if (res.success) {
+        successCount++;
+        setWallets(prev => prev.map(item => item.id === w.id ? { ...item, status: 'ready', errorMessage: undefined } : item));
+        addLog('success', `[Dry Run] 钱包 ${formatAddress(w.address)} 校验通过！预估 Gas: ${res.gasEstimated}`, undefined, w.address);
+      } else {
+        failCount++;
+        setWallets(prev => prev.map(item => item.id === w.id ? { ...item, status: 'failed', errorMessage: res.errorMessage } : item));
+        addLog('error', `[Dry Run] 钱包 ${formatAddress(w.address)} 校验未通过: ${res.errorMessage}`, undefined, w.address);
+        
+        // 针对未开售的明确提示
+        if (dropData.isUpcoming && dropData.startTime > 0) {
+          addLog('warn', `💡 提示: 当前公售时间未到（开售时间: ${new Date(dropData.startTime * 1000).toLocaleString('zh-CN')}），SeaDrop 合约在此阶段会按规则 Revert。这属于正常保护机制，请在「定时狙击」中设置自动开抢。`);
+        }
+      }
+    }
+
+    setIsSimulating(false);
+    if (failCount === 0) {
+      addLog('success', `🎉 全部 ${successCount} 个钱包模拟校验通过，交易逻辑安全，零 Gas 损耗！`);
+    } else {
+      addLog('warn', `模拟校验结束: ${successCount} 个成功，${failCount} 个失败。请查看错误原因。`);
+    }
+  };
+
+  // Parallel Execution
+  const executeParallelMint = async () => {
+    const selected = wallets.filter(w => w.selected);
+    if (selected.length === 0 || !dropData) return;
+
+    setIsExecuting(true);
+    setIsCountdownActive(false);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+
+    addLog(
+      'sniper',
+      `🚀 启动并发抢购！正在向网络齐发 ${selected.length} 笔交易，每钱包铸造 ${sniperConfig.quantityPerWallet} 个...`
+    );
+
+    // Set all to pending
+    setWallets(prev => prev.map(w => w.selected ? { ...w, status: 'pending', errorMessage: undefined } : w));
+
+    // Parallel fire via Promise.allSettled
+    const results = await Promise.allSettled(
+      selected.map(async (wallet) => {
+        return executeMint(
+          wallet,
+          contractAddress,
+          sniperConfig.quantityPerWallet,
+          dropData,
+          gasConfig,
+          currentChain,
+          customRpc
+        );
+      })
+    );
+
+    let succCount = 0;
+    let failCount = 0;
+
+    results.forEach((res, index) => {
+      const targetWallet = selected[index];
+      if (res.status === 'fulfilled') {
+        succCount++;
+        const txHash = res.value.txHash;
+        setWallets(prev => prev.map(w => w.id === targetWallet.id ? {
+          ...w,
+          status: 'success',
+          lastTxHash: txHash
+        } : w));
+        addLog(
+          'success',
+          `✅ 钱包 ${formatAddress(targetWallet.address)} 铸造成功！交易已确认`,
+          txHash,
+          targetWallet.address
+        );
+      } else {
+        failCount++;
+        const errMsg = res.reason?.message || res.reason?.shortMessage || String(res.reason);
+        const failedTxHash = res.reason?.txHash || res.reason?.receipt?.hash;
+        setWallets(prev => prev.map(w => w.id === targetWallet.id ? {
+          ...w,
+          status: 'failed',
+          errorMessage: errMsg,
+          lastTxHash: failedTxHash || w.lastTxHash
+        } : w));
+        addLog(
+          'error',
+          `❌ 钱包 ${formatAddress(targetWallet.address)} 铸造未通过: ${errMsg}`,
+          failedTxHash,
+          targetWallet.address
+        );
+      }
+    });
+
+    setIsExecuting(false);
+    addLog(
+      'sniper',
+      `🏁 抢购执行完毕！成功: ${succCount} / 失败: ${failCount}。正在更新余额...`
+    );
+    handleRefreshBalances();
+  };
+
+  // Start Snipe (Instant or Scheduled)
+  const handleStartSnipe = () => {
+    const selected = wallets.filter(w => w.selected);
+    if (selected.length === 0) {
+      alert('请勾选至少一个用于抢购的钱包');
+      return;
+    }
+    if (!dropData) {
+      alert('请先查询有效的 NFT 合约');
+      return;
+    }
+
+    if (sniperConfig.mode === 'instant') {
+      executeParallelMint();
+    } else {
+      // Scheduled mode
+      const nowSec = Math.floor(Date.now() / 1000);
+      const targetSec = sniperConfig.targetTimestamp;
+
+      if (!targetSec || targetSec <= nowSec) {
+        if (!window.confirm('目标时间已过期或未设置，是否立即以极速模式开火？')) {
+          return;
+        }
+        executeParallelMint();
+        return;
+      }
+
+      const diffSec = targetSec - nowSec;
+      setCountdownSeconds(diffSec);
+      setIsCountdownActive(true);
+      addLog(
+        'sniper',
+        `⏳ 定时狙击已锁定！目标时间: ${new Date(targetSec * 1000).toLocaleString('zh-CN')} (倒计时 ${diffSec} 秒)`
+      );
+
+      // Setup countdown interval
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = setInterval(() => {
+        const currentNow = Date.now();
+        const triggerTime = (targetSec * 1000) - (sniperConfig.triggerAdvanceMs || 0);
+        const remainMs = triggerTime - currentNow;
+
+        if (remainMs <= 0) {
+          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+          addLog('sniper', `🎯 倒计时归零，触发提前 ${sniperConfig.triggerAdvanceMs}ms 瞬间开火！`);
+          executeParallelMint();
+        } else {
+          setCountdownSeconds(Math.max(0, Math.ceil(remainMs / 1000)));
+        }
+      }, 200);
+    }
+  };
+
+  // Cancel Scheduled Snipe
+  const handleCancelSnipe = () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    setIsCountdownActive(false);
+    addLog('warn', '已取消定时抢购倒计时监听。');
+  };
+
+  const selectedWalletsCount = wallets.filter(w => w.selected).length;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Header */}
+      <Header
+        currentChain={currentChain}
+        onSelectChain={handleSelectChain}
+        wallets={wallets}
+        onOpenDocs={() => setShowDocs(true)}
+        onOpenRpcModal={() => setShowRpcModal(true)}
+        onRefreshBalances={handleRefreshBalances}
+        isRefreshing={isRefreshingBalances}
+        customRpc={customRpc}
+      />
+
+      {/* Main Content Dashboard */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
+        {/* Module 1: Contract Inspector */}
+        <ContractConfig
+          contractAddress={contractAddress}
+          setContractAddress={setContractAddress}
+          onFetchDrop={handleFetchContract}
+          isLoading={isLoadingContract}
+          dropData={dropData}
+          nftName={nftName}
+          nftSymbol={nftSymbol}
+          chain={currentChain}
+          onApplyScheduleTime={handleApplyScheduleTime}
+          error={contractError}
+        />
+
+        {/* Module 2: Wallet Manager */}
+        <WalletManager
+          wallets={wallets}
+          setWallets={setWallets}
+          chain={currentChain}
+          onRefreshBalances={handleRefreshBalances}
+          isRefreshing={isRefreshingBalances}
+        />
+
+        {/* Module 3: Sniper & Gas Settings */}
+        <SniperSettings
+          sniperConfig={sniperConfig}
+          setSniperConfig={setSniperConfig}
+          gasConfig={gasConfig}
+          setGasConfig={setGasConfig}
+          chain={currentChain}
+          dropData={dropData}
+          selectedWalletsCount={selectedWalletsCount}
+        />
+
+        {/* Module 4: Action Controls & Countdown Bar */}
+        <ActionControls
+          onSimulate={handleSimulate}
+          onStartSnipe={handleStartSnipe}
+          onCancelSnipe={handleCancelSnipe}
+          isSimulating={isSimulating}
+          isExecuting={isExecuting}
+          isCountdownActive={isCountdownActive}
+          countdownSeconds={countdownSeconds}
+          selectedWalletsCount={selectedWalletsCount}
+          dropData={dropData}
+          sniperConfig={sniperConfig}
+          chain={currentChain}
+        />
+
+        {/* Module 5: Execution Terminal Logs */}
+        <TerminalLogs
+          logs={logs}
+          onClearLogs={() => setLogs([])}
+          chain={currentChain}
+        />
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-900 bg-slate-950 py-4 px-4 text-center text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div>
+            NFT Public Mint (SeaDrop Sniper) · 中文重构版 · 基于 morsyxbt/nft-public-mint
+          </div>
+          <div className="flex items-center gap-4 text-slate-400">
+            <span>支持 Robinhood Chain · Ink (Kraken L2) · SeaDrop</span>
+            <button
+              onClick={() => setShowDocs(true)}
+              className="text-emerald-400 hover:underline"
+            >
+              技术原理与指南
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* Modals */}
+      {showDocs && <DocModal onClose={() => setShowDocs(false)} />}
+      {showRpcModal && (
+        <CustomRpcModal
+          chain={currentChain}
+          customRpc={customRpc}
+          onSaveRpc={(rpc) => {
+            setCustomRpc(rpc);
+            if (rpc) {
+              addLog('info', `已设置私有 RPC: ${rpc}`);
+            } else {
+              addLog('info', `已恢复公共默认 RPC`);
+            }
+          }}
+          onClose={() => setShowRpcModal(false)}
+        />
+      )}
+    </div>
+  );
+}

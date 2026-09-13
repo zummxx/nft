@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+release/
+coverage/
+*.exe
+*.zip
+*.msi
+.cache/
+.npm/
+.DS_Store
+*.log
+.env*
+!.env.example

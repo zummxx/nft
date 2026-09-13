@@ -1,0 +1,6 @@
+{
+  "name": "NFT 公共铸造抢购工具 (NFT Public Mint)",
+  "description": "基于 SeaDrop 协议与多链多钱包的 NFT 链上公共铸造与定时抢购工具（中文版）",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
