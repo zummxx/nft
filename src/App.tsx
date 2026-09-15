@@ -136,7 +136,7 @@ export default function App() {
       id: 'init-log-2',
       timestamp: Date.now() + 1,
       level: 'info',
-      text: '默认连接 Base 主网 SeaDrop 合约 (0x00005EA00Ac477B1030CE78506496e8C2dE24bf5)。'
+      text: '默认连接 Arc 链 / Robinhood Chain SeaDrop 协议。'
     }
   ]);
 
@@ -289,9 +289,16 @@ export default function App() {
       );
 
       if (details.dropData.isUpcoming && details.dropData.startTime > 0) {
+        const openDate = new Date(details.dropData.startTime * 1000);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const diff = details.dropData.startTime - nowSec;
+        const days = Math.floor(diff / 86400);
+        const hours = Math.floor((diff % 86400) / 3600);
+        const mins = Math.floor((diff % 3600) / 60);
+        const timeRemainingText = days > 0 ? `${days}天${hours}小时` : `${hours}小时${mins}分钟`;
         addLog(
           'warn',
-          `注意: 该 NFT 公售尚未开启，开售时间为: ${new Date(details.dropData.startTime * 1000).toLocaleString('zh-CN')}。可切换到「定时狙击」模式等待触发。`
+          `注意: 该 NFT 公售尚未开启，开售时间为: ${openDate.getFullYear()}/${openDate.getMonth() + 1}/${openDate.getDate()} ${openDate.toTimeString().split(' ')[0]} (距离开售还有约 ${timeRemainingText})。可切换到「定时抢购」模式等待触发。`
         );
       } else if (details.dropData.isActive) {
         addLog('sniper', `🟢 该 NFT 公售目前处于开放状态，可立即发起并发铸造！`);
@@ -705,12 +712,12 @@ export default function App() {
             NFT Public Mint (SeaDrop Sniper) · 中文重构版 · 基于 morsyxbt/nft-public-mint
           </div>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>支持 Robinhood Chain · Ink (Kraken L2) · Base · 以太坊 · SeaDrop</span>
+            <span>支持 Arc 链 (arc.io) · Robinhood · Ink · 以太坊 · SeaDrop</span>
             <button
               onClick={() => setShowDocs(true)}
               className="text-emerald-400 hover:underline"
             >
-              技术原理与指南
+              技术原理与官方资源
             </button>
           </div>
         </div>

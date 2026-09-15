@@ -42,7 +42,8 @@ export const ContractConfig: React.FC<ContractConfigProps> = ({
   const formatTimestamp = (ts: number) => {
     if (!ts || ts === 0) return '未设置 / 永久有效';
     const date = new Date(ts * 1000);
-    return date.toLocaleString('zh-CN', {
+    const dateStr = date.toLocaleString('zh-CN', {
+      year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
@@ -50,6 +51,28 @@ export const ContractConfig: React.FC<ContractConfigProps> = ({
       second: '2-digit',
       hour12: false
     });
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const diff = ts - nowSec;
+    if (diff > 0) {
+      const days = Math.floor(diff / 86400);
+      const hours = Math.floor((diff % 86400) / 3600);
+      const mins = Math.floor((diff % 3600) / 60);
+      const secs = diff % 60;
+      let relative = '';
+      if (days > 0) {
+        relative = `${days}天${hours}小时后`;
+      } else if (hours > 0) {
+        relative = `${hours}小时${mins}分后`;
+      } else if (mins > 0) {
+        relative = `${mins}分${secs}秒后`;
+      } else {
+        relative = `${secs}秒后`;
+      }
+      return `${dateStr} (${relative})`;
+    } else {
+      return `${dateStr} (已开启)`;
+    }
   };
 
   const handlePasteContract = async () => {

@@ -97,6 +97,55 @@ export const DocModal: React.FC<DocModalProps> = ({ onClose }) => {
             </p>
           </div>
 
+          {/* ARC Chain Official Resources */}
+          <div className="bg-slate-950/80 border border-blue-900/50 p-3.5 rounded-lg space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span>ARC 链官方资源导航 (Arc Network Ecosystem)</span>
+              </span>
+              <span className="text-[10px] text-blue-400 font-mono">原生 Gas: USDC</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <a
+                href="https://arc.io"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between p-2 rounded bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
+              >
+                <span>· 官方网站: <strong className="text-white">arc.io</strong></span>
+                <ExternalLink className="w-3 h-3 text-blue-400" />
+              </a>
+              <a
+                href="https://docs.arc.io"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between p-2 rounded bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
+              >
+                <span>· 开发者文档: <strong className="text-white">docs.arc.io</strong></span>
+                <ExternalLink className="w-3 h-3 text-blue-400" />
+              </a>
+              <a
+                href="https://arclenz.xyz/ecosystem"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between p-2 rounded bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
+              >
+                <span>· 生态汇总: <strong className="text-white">arclenz.xyz/ecosystem</strong></span>
+                <ExternalLink className="w-3 h-3 text-blue-400" />
+              </a>
+              <a
+                href="https://explorer.arc.io"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between p-2 rounded bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
+              >
+                <span>· 区块浏览器: <strong className="text-white">explorer.arc.io</strong></span>
+                <ExternalLink className="w-3 h-3 text-blue-400" />
+              </a>
+            </div>
+          </div>
+
           {/* Repo Link */}
           <div className="pt-2 flex items-center justify-between text-slate-400 text-xs border-t border-slate-800">
             <span>原版 GitHub 仓库:</span>

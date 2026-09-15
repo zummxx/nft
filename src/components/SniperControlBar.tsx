@@ -75,7 +75,7 @@ export const SniperControlBar: React.FC<SniperControlBarProps> = ({
     setSniperConfig(prev => ({ ...prev, targetTimestamp: ts }));
   };
 
-  const isL2 = chain.id === 8453 || chain.id === 42161 || chain.id === 10;
+  const isL2 = chain.id === 4663 || chain.id === 57073 || chain.id === 5042 || chain.id === 5042002;
 
   const handlePresetChange = (preset: GasPreset) => {
     let maxPriority = 1.5;
@@ -141,10 +141,12 @@ export const SniperControlBar: React.FC<SniperControlBarProps> = ({
 
   const formatCountdown = (totalSec: number) => {
     if (totalSec <= 0) return '00:00:00';
-    const hours = Math.floor(totalSec / 3600);
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
     const mins = Math.floor((totalSec % 3600) / 60);
     const secs = totalSec % 60;
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return days > 0 ? `${days}天 ${timeStr}` : timeStr;
   };
 
   const isReady = Boolean(dropData && dropData.isFetched && selectedWalletsCount > 0);
@@ -258,30 +260,67 @@ export const SniperControlBar: React.FC<SniperControlBarProps> = ({
 
           {/* Scheduled Time & Advance ms Config */}
           {sniperConfig.mode === 'scheduled' && (
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/80">
-              <div className="flex items-center gap-1.5 grow">
-                <span className="text-[11px] text-slate-400">开售时间:</span>
-                <input
-                  type="datetime-local"
-                  step="1"
-                  value={localDateTime}
-                  onChange={(e) => handleDateTimeChange(e.target.value)}
-                  className="bg-slate-900 border border-slate-700/80 rounded px-2 py-1 text-xs font-mono text-white focus:outline-none focus:border-amber-500 grow"
-                />
+            <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 grow">
+                  <span className="text-[11px] text-slate-400 shrink-0">开售时间:</span>
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    value={localDateTime}
+                    onChange={(e) => handleDateTimeChange(e.target.value)}
+                    className="bg-slate-900 border border-slate-700/80 rounded px-2 py-1 text-xs font-mono text-white focus:outline-none focus:border-amber-500 grow min-w-[170px]"
+                  />
+                </div>
+                {dropData?.startTime && dropData.startTime > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSniperConfig(prev => ({ ...prev, targetTimestamp: dropData.startTime }));
+                    }}
+                    className="px-2 py-1 text-[10px] rounded bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-800/60 transition-colors shrink-0"
+                    title="一键同步链上读取到的实际开售时间"
+                  >
+                    对齐链上时间
+                  </button>
+                )}
+                <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-1 rounded shrink-0">
+                  <span className="text-[11px] text-slate-400">提前量:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="2000"
+                    step="50"
+                    value={sniperConfig.triggerAdvanceMs}
+                    onChange={(e) => setSniperConfig(prev => ({ ...prev, triggerAdvanceMs: Number(e.target.value) || 0 }))}
+                    className="w-16 bg-slate-950 border border-slate-700/80 rounded px-1 text-xs font-mono text-amber-400 text-center font-bold"
+                  />
+                  <span className="text-[10px] text-slate-400">ms</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-1 rounded">
-                <span className="text-[11px] text-slate-400">提前量:</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="2000"
-                  step="50"
-                  value={sniperConfig.triggerAdvanceMs}
-                  onChange={(e) => setSniperConfig(prev => ({ ...prev, triggerAdvanceMs: Number(e.target.value) || 0 }))}
-                  className="w-16 bg-slate-950 border border-slate-700/80 rounded px-1 text-xs font-mono text-amber-400 text-center font-bold"
-                />
-                <span className="text-[10px] text-slate-400">ms</span>
-              </div>
+
+              {/* Status Hint */}
+              {sniperConfig.targetTimestamp > 0 && (
+                <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+                  <span>
+                    {(() => {
+                      const nowSec = Math.floor(Date.now() / 1000);
+                      const diff = sniperConfig.targetTimestamp - nowSec;
+                      if (diff > 0) {
+                        const days = Math.floor(diff / 86400);
+                        const hours = Math.floor((diff % 86400) / 3600);
+                        const mins = Math.floor((diff % 3600) / 60);
+                        const secs = diff % 60;
+                        const dStr = days > 0 ? `${days}天` : '';
+                        return `⏳ 距目标时间还剩: ${dStr}${hours}小时${mins}分${secs}秒`;
+                      } else {
+                        return `⚡ 目标时间已到或已过，点击开火将直接发起铸造`;
+                      }
+                    })()}
+                  </span>
+                  <span className="font-mono text-slate-500">TS: {sniperConfig.targetTimestamp}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

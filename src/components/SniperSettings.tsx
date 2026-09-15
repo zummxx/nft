@@ -54,7 +54,7 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
     let maxPriority = 1.5;
     let maxFee = 25;
 
-    if (chain.id === 8453 || chain.id === 42161 || chain.id === 10) {
+    if (chain.id === 4663 || chain.id === 57073 || chain.id === 5042 || chain.id === 5042002) {
       // L2 gas values (gwei is very small)
       if (preset === 'standard') {
         maxPriority = 0.01;
@@ -161,9 +161,20 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
           {sniperConfig.mode === 'scheduled' && (
             <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2.5">
               <div>
-                <label className="text-xs font-medium text-slate-300 block mb-1">
-                  目标开售时间 (本地时间)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-slate-300">
+                    目标开售时间 (本地时间)
+                  </label>
+                  {dropData?.startTime && dropData.startTime > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSniperConfig(prev => ({ ...prev, targetTimestamp: dropData.startTime }))}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 underline"
+                    >
+                      对齐链上时间
+                    </button>
+                  )}
+                </div>
                 <input
                   type="datetime-local"
                   step="1"
@@ -172,6 +183,25 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              {sniperConfig.targetTimestamp > 0 && (
+                <div className="text-[10px] text-slate-400 bg-slate-900/60 px-2 py-1 rounded">
+                  {(() => {
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const diff = sniperConfig.targetTimestamp - nowSec;
+                    if (diff > 0) {
+                      const days = Math.floor(diff / 86400);
+                      const hours = Math.floor((diff % 86400) / 3600);
+                      const mins = Math.floor((diff % 3600) / 60);
+                      const secs = diff % 60;
+                      const dStr = days > 0 ? `${days}天` : '';
+                      return `⏳ 距目标时间还剩: ${dStr}${hours}小时${mins}分${secs}秒`;
+                    } else {
+                      return `⚡ 目标时间已到或已过`;
+                    }
+                  })()}
+                </div>
+              )}
 
               <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>网络广播提前量 (毫秒)</span>

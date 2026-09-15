@@ -4,6 +4,36 @@ export const DEFAULT_OPENSEA_FEE_RECIPIENT = '0x0000a26b00c1F0DF0030003900271400
 
 export const SUPPORTED_CHAINS: ChainConfig[] = [
   {
+    id: 5042,
+    name: 'Arc Network',
+    nameZh: 'Arc 链',
+    nativeSymbol: 'USDC',
+    rpcUrl: 'https://rpc.arc.io',
+    fallbackRpcs: [
+      'https://arc.drpc.org',
+      'https://rpc.mainnet.arc.io',
+      'https://rpc.testnet.arc.io'
+    ],
+    explorerUrl: 'https://explorer.arc.io',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#2775CA',
+    isTestnet: false,
+  },
+  {
+    id: 5042002,
+    name: 'Arc Testnet',
+    nameZh: 'Arc 测试网',
+    nativeSymbol: 'USDC',
+    rpcUrl: 'https://rpc.testnet.arc.io',
+    fallbackRpcs: [
+      'https://arc-testnet.drpc.org'
+    ],
+    explorerUrl: 'https://testnet.arcscan.app',
+    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
+    iconColor: '#3B82F6',
+    isTestnet: true,
+  },
+  {
     id: 4663,
     name: 'Robinhood Chain',
     nameZh: 'Robinhood Chain',
@@ -35,21 +65,6 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     isTestnet: false,
   },
   {
-    id: 8453,
-    name: 'Base Mainnet',
-    nameZh: 'Base 主网',
-    nativeSymbol: 'ETH',
-    rpcUrl: 'https://mainnet.base.org',
-    fallbackRpcs: [
-      'https://base.publicnode.com',
-      'https://1rpc.io/base'
-    ],
-    explorerUrl: 'https://basescan.org',
-    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
-    iconColor: '#0052FF',
-    isTestnet: false,
-  },
-  {
     id: 1,
     name: 'Ethereum Mainnet',
     nameZh: '以太坊主网',
@@ -63,51 +78,6 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     explorerUrl: 'https://etherscan.io',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
     iconColor: '#627EEA',
-    isTestnet: false,
-  },
-  {
-    id: 42161,
-    name: 'Arbitrum One',
-    nameZh: 'Arbitrum',
-    nativeSymbol: 'ETH',
-    rpcUrl: 'https://arb1.arbitrum.io/rpc',
-    fallbackRpcs: [
-      'https://arbitrum.publicnode.com',
-      'https://1rpc.io/arb'
-    ],
-    explorerUrl: 'https://arbiscan.io',
-    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
-    iconColor: '#28A0F0',
-    isTestnet: false,
-  },
-  {
-    id: 10,
-    name: 'Optimism Mainnet',
-    nameZh: 'OP Mainnet',
-    nativeSymbol: 'ETH',
-    rpcUrl: 'https://mainnet.optimism.io',
-    fallbackRpcs: [
-      'https://optimism.publicnode.com',
-      'https://1rpc.io/op'
-    ],
-    explorerUrl: 'https://optimistic.etherscan.io',
-    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
-    iconColor: '#FF0420',
-    isTestnet: false,
-  },
-  {
-    id: 137,
-    name: 'Polygon PoS',
-    nameZh: 'Polygon',
-    nativeSymbol: 'POL',
-    rpcUrl: 'https://polygon-bor-rpc.publicnode.com',
-    fallbackRpcs: [
-      'https://1rpc.io/matic',
-      'https://polygon.drpc.org'
-    ],
-    explorerUrl: 'https://polygonscan.com',
-    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
-    iconColor: '#8247E5',
     isTestnet: false,
   },
 ];
