@@ -54,7 +54,22 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
     let maxPriority = 1.5;
     let maxFee = 25;
 
-    if (chain.id === 4663 || chain.id === 57073 || chain.id === 5042) {
+    if (chain.id === 5042) {
+      // Arc chain custom gas presets:
+      // 标准模式: 小费 10, 最大 30 Gwei
+      // 极速模式: 小费 20, 最大 60 Gwei
+      // 狙击抢跑: 小费 30, 最大 100 Gwei
+      if (preset === 'standard') {
+        maxPriority = 10;
+        maxFee = 30;
+      } else if (preset === 'fast') {
+        maxPriority = 20;
+        maxFee = 60;
+      } else if (preset === 'sniper') {
+        maxPriority = 30;
+        maxFee = 100;
+      }
+    } else if (chain.id === 4663 || chain.id === 57073) {
       // L2 gas values (gwei is very small)
       if (preset === 'standard') {
         maxPriority = 0.01;

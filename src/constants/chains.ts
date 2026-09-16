@@ -12,7 +12,7 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     fallbackRpcs: [
       'https://arc-scan.org'
     ],
-    explorerUrl: 'https://explorer.arc.io',
+    explorerUrl: 'https://arc-scan.org',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
     iconColor: '#2775CA',
     isTestnet: false,

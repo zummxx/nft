@@ -422,8 +422,21 @@ export async function executeMint(
         maxFee = (maxFee * 15n) / 10n;
       }
 
+      // Ensure Arc Network (id: 5042) meets minimum 20 Gwei threshold (0.00000002 USDC)
+      const isArc = chain.id === 5042;
+      const minArcFee = ethers.parseUnits('20', 'gwei');
+
+      if (isArc) {
+        if (maxPriorityFee < ethers.parseUnits('1', 'gwei')) {
+          maxPriorityFee = ethers.parseUnits('1', 'gwei');
+        }
+        if (maxFee < minArcFee) {
+          maxFee = minArcFee;
+        }
+      }
+
       // Ensure maxFee is not below network baseFee
-      const networkBaseFee = feeData.maxFeePerGas || feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
+      const networkBaseFee = feeData.maxFeePerGas || feeData.gasPrice || (isArc ? minArcFee : ethers.parseUnits('0.1', 'gwei'));
       if (maxFee < networkBaseFee) {
         maxFee = (networkBaseFee * 13n) / 10n;
       }

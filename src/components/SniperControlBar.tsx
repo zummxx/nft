@@ -75,13 +75,29 @@ export const SniperControlBar: React.FC<SniperControlBarProps> = ({
     setSniperConfig(prev => ({ ...prev, targetTimestamp: ts }));
   };
 
-  const isL2 = chain.id === 4663 || chain.id === 57073 || chain.id === 5042;
+  const isArc = chain.id === 5042;
+  const isL2 = chain.id === 4663 || chain.id === 57073;
 
   const handlePresetChange = (preset: GasPreset) => {
     let maxPriority = 1.5;
     let maxFee = 25;
 
-    if (isL2) {
+    if (isArc) {
+      // Arc chain custom gas presets:
+      // 标准模式: 小费 10, 最大 30 Gwei
+      // 极速模式: 小费 20, 最大 60 Gwei
+      // 狙击抢跑: 小费 30, 最大 100 Gwei
+      if (preset === 'standard') {
+        maxPriority = 10;
+        maxFee = 30;
+      } else if (preset === 'fast') {
+        maxPriority = 20;
+        maxFee = 60;
+      } else if (preset === 'sniper') {
+        maxPriority = 30;
+        maxFee = 100;
+      }
+    } else if (isL2) {
       if (preset === 'standard') {
         maxPriority = 0.01;
         maxFee = 0.1;

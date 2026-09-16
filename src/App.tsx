@@ -102,11 +102,23 @@ export default function App() {
   const [isRefreshingBalances, setIsRefreshingBalances] = useState<boolean>(false);
 
   // Gas Settings
-  const [gasConfig, setGasConfig] = useState<GasConfig>({
-    preset: 'sniper',
-    maxFeePerGasGwei: 0.2,
-    maxPriorityFeePerGasGwei: 0.05,
-    gasLimitMultiplier: 1.2,
+  const [gasConfig, setGasConfig] = useState<GasConfig>(() => {
+    // Check if initial chain is Arc Network (id: 5042)
+    const initChain = SUPPORTED_CHAINS[0];
+    if (initChain && initChain.id === 5042) {
+      return {
+        preset: 'sniper',
+        maxFeePerGasGwei: 100,
+        maxPriorityFeePerGasGwei: 30,
+        gasLimitMultiplier: 1.2,
+      };
+    }
+    return {
+      preset: 'sniper',
+      maxFeePerGasGwei: 0.2,
+      maxPriorityFeePerGasGwei: 0.05,
+      gasLimitMultiplier: 1.2,
+    };
   });
 
   // Sniper Timing & Mode Settings
@@ -211,6 +223,17 @@ export default function App() {
   // Switch Chain handler
   const handleSelectChain = (chain: ChainConfig) => {
     setCurrentChain(chain);
+
+    // Auto adapt Gas for Arc Network
+    if (chain.id === 5042) {
+      setGasConfig(prev => ({
+        ...prev,
+        preset: prev.preset || 'sniper',
+        maxFeePerGasGwei: Math.max(prev.maxFeePerGasGwei, 30),
+        maxPriorityFeePerGasGwei: Math.max(prev.maxPriorityFeePerGasGwei, 10),
+      }));
+    }
+
     const dedicatedRpc = customRpcs[chain.id];
     const rpcList = parseRpcUrls(dedicatedRpc);
     if (rpcList.length > 1) {
