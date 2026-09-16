@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, Plus, Trash2, Key, CheckSquare, Square, RefreshCw, ExternalLink, ShieldAlert, Sparkles, Copy, Check, Clipboard } from 'lucide-react';
+import { Wallet, Plus, Trash2, Key, CheckSquare, Square, RefreshCw, ExternalLink, ShieldAlert, Sparkles, Copy, Check, Clipboard, Send } from 'lucide-react';
 import { WalletAccount, ChainConfig } from '../types';
 import { formatAddress } from '../utils/seadrop';
 import { ethers } from 'ethers';
@@ -11,6 +11,7 @@ interface WalletManagerProps {
   onRefreshBalances: () => void;
   isRefreshing: boolean;
   maxHeightClass?: string;
+  onOpenSweepModal?: () => void;
 }
 
 export const WalletManager: React.FC<WalletManagerProps> = ({
@@ -20,6 +21,7 @@ export const WalletManager: React.FC<WalletManagerProps> = ({
   onRefreshBalances,
   isRefreshing,
   maxHeightClass = 'max-h-80 sm:max-h-[380px]',
+  onOpenSweepModal,
 }) => {
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [importText, setImportText] = React.useState('');
@@ -200,6 +202,18 @@ export const WalletManager: React.FC<WalletManagerProps> = ({
             <Key className="w-3.5 h-3.5" />
             <span>批量导入私钥</span>
           </button>
+
+          {onOpenSweepModal && (
+            <button
+              id="nft-batch-sweep-btn"
+              onClick={onOpenSweepModal}
+              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm border border-purple-400/30"
+              title="批量归集所有小钱包里的 NFT 到一个指定主地址"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>NFT 批量归集</span>
+            </button>
+          )}
 
           <button
             id="generate-ephemeral-wallet-btn"

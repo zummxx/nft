@@ -13,6 +13,7 @@ import { SniperControlBar } from './components/SniperControlBar';
 import { TerminalLogs } from './components/TerminalLogs';
 import { DocModal } from './components/DocModal';
 import { CustomRpcModal } from './components/CustomRpcModal';
+import { NftSweepModal } from './components/NftSweepModal';
 import { SUPPORTED_CHAINS, DEMO_CONTRACTS } from './constants/chains';
 import {
   ChainConfig,
@@ -155,6 +156,7 @@ export default function App() {
   // Modals & Layout
   const [showDocs, setShowDocs] = useState<boolean>(false);
   const [showRpcModal, setShowRpcModal] = useState<boolean>(false);
+  const [showSweepModal, setShowSweepModal] = useState<boolean>(false);
   const [layoutMode, setLayoutMode] = useState<'cockpit' | 'stack'>(() => {
     try {
       const saved = localStorage.getItem('nft_sniper_layout_mode');
@@ -639,6 +641,7 @@ export default function App() {
                 onRefreshBalances={handleRefreshBalances}
                 isRefreshing={isRefreshingBalances}
                 maxHeightClass="max-h-[460px]"
+                onOpenSweepModal={() => setShowSweepModal(true)}
               />
             </div>
 
@@ -692,6 +695,7 @@ export default function App() {
               chain={currentChain}
               onRefreshBalances={handleRefreshBalances}
               isRefreshing={isRefreshingBalances}
+              onOpenSweepModal={() => setShowSweepModal(true)}
             />
 
             <SniperSettings
@@ -757,6 +761,17 @@ export default function App() {
           onClearAllRpcs={handleClearAllRpcs}
           onSelectChain={handleSelectChain}
           onClose={() => setShowRpcModal(false)}
+        />
+      )}
+      {showSweepModal && (
+        <NftSweepModal
+          isOpen={showSweepModal}
+          onClose={() => setShowSweepModal(false)}
+          wallets={wallets}
+          chain={currentChain}
+          defaultContractAddress={contractAddress}
+          customRpc={activeCustomRpc}
+          onAddLog={addLog}
         />
       )}
     </div>
