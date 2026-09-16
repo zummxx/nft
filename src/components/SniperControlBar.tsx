@@ -75,7 +75,7 @@ export const SniperControlBar: React.FC<SniperControlBarProps> = ({
     setSniperConfig(prev => ({ ...prev, targetTimestamp: ts }));
   };
 
-  const isL2 = chain.id === 4663 || chain.id === 57073 || chain.id === 5042 || chain.id === 5042002;
+  const isL2 = chain.id === 4663 || chain.id === 57073 || chain.id === 5042;
 
   const handlePresetChange = (preset: GasPreset) => {
     let maxPriority = 1.5;

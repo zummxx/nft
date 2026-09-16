@@ -54,7 +54,7 @@ export const SniperSettings: React.FC<SniperSettingsProps> = ({
     let maxPriority = 1.5;
     let maxFee = 25;
 
-    if (chain.id === 4663 || chain.id === 57073 || chain.id === 5042 || chain.id === 5042002) {
+    if (chain.id === 4663 || chain.id === 57073 || chain.id === 5042) {
       // L2 gas values (gwei is very small)
       if (preset === 'standard') {
         maxPriority = 0.01;

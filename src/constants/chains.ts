@@ -8,30 +8,14 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     name: 'Arc Network',
     nameZh: 'Arc 链',
     nativeSymbol: 'USDC',
-    rpcUrl: 'https://rpc.arc.io',
+    rpcUrl: 'https://rpc.mainnet.arc.io',
     fallbackRpcs: [
-      'https://arc.drpc.org',
-      'https://rpc.mainnet.arc.io',
-      'https://rpc.testnet.arc.io'
+      'https://arc-scan.org'
     ],
     explorerUrl: 'https://explorer.arc.io',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
     iconColor: '#2775CA',
     isTestnet: false,
-  },
-  {
-    id: 5042002,
-    name: 'Arc Testnet',
-    nameZh: 'Arc 测试网',
-    nativeSymbol: 'USDC',
-    rpcUrl: 'https://rpc.testnet.arc.io',
-    fallbackRpcs: [
-      'https://arc-testnet.drpc.org'
-    ],
-    explorerUrl: 'https://testnet.arcscan.app',
-    seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
-    iconColor: '#3B82F6',
-    isTestnet: true,
   },
   {
     id: 4663,
