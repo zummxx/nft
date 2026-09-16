@@ -169,7 +169,10 @@ export async function fetchContractDetails(
   if (errorMsg.includes('BAD_DATA') || errorMsg.includes('missing revert data')) {
     throw new Error(`无法从 SeaDrop (${formatAddress(chain.seaDropAddress)}) 查询该合约。请确认该合约是否支持 SeaDrop 协议，或检查所选网络是否正确。`);
   }
-  throw new Error(`SeaDrop 查询失败: ${errorMsg} (已尝试官方及多个备用节点，建议在右上角「RPC 设置」配置私有节点)`);
+  if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('fetch failed')) {
+    throw new Error(`无法连接至 ${chain.nameZh} RPC 节点 (Failed to fetch)。原因：浏览器直连公共节点受网络防火墙/Cloudflare盾拦截或代理未生效。请检查网络代理，或在右上角「RPC 设置」配置私有节点。`);
+  }
+  throw new Error(`SeaDrop 查询失败: ${errorMsg} (已尝试官方及备用节点，建议在右上角「RPC 设置」配置私有节点)`);
 }
 
 export async function fetchWalletBalance(

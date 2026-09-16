@@ -9,9 +9,7 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     nameZh: 'Arc 链',
     nativeSymbol: 'USDC',
     rpcUrl: 'https://rpc.mainnet.arc.io',
-    fallbackRpcs: [
-      'https://arc-scan.org'
-    ],
+    fallbackRpcs: [],
     explorerUrl: 'https://arc-scan.org',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
     iconColor: '#2775CA',
@@ -23,10 +21,7 @@ export const SUPPORTED_CHAINS: ChainConfig[] = [
     nameZh: 'Robinhood Chain',
     nativeSymbol: 'ETH',
     rpcUrl: 'https://rpc.mainnet.chain.robinhood.com',
-    fallbackRpcs: [
-      'https://robinhood-chain.publicnode.com',
-      'https://rpc.robinhood.chain.nodeflare.app'
-    ],
+    fallbackRpcs: [],
     explorerUrl: 'https://robinhoodchain.blockscout.com',
     seaDropAddress: '0x00005EA00Ac477B1030CE78506496e8C2dE24bf5',
     iconColor: '#00C805',
