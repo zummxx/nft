@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Send, ShieldAlert, CheckCircle2, AlertTriangle, RefreshCw, ArrowRight, Wallet, Check, ExternalLink, HelpCircle } from 'lucide-react';
 import { WalletAccount, ChainConfig } from '../types';
 import { ethers } from 'ethers';
-import { getProvider, formatAddress } from '../utils/seadrop';
+import { getProvider, getCandidateProviders, formatAddress } from '../utils/seadrop';
 
 // Comprehensive ABI for checking and transferring ERC721 & ERC1155
 const NFT_TRANSFER_ABI = [
@@ -113,11 +113,15 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
 
       const updatedStatuses: WalletNftStatus[] = [];
 
-      // Get latest block number for querying Transfer logs if needed
+      // Get candidate providers to fallback if RPC limits queryFilter
+      const candidateProviders = getCandidateProviders(chain, customRpc);
       let latestBlock = 0;
-      try {
-        latestBlock = await provider.getBlockNumber();
-      } catch {}
+      for (const p of candidateProviders) {
+        try {
+          latestBlock = await p.getBlockNumber();
+          if (latestBlock > 0) break;
+        } catch {}
+      }
 
       for (const w of wallets) {
         let bal = 0;
@@ -128,7 +132,7 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
             const b = await contract.balanceOf(w.address);
             bal = Number(b);
 
-            // If balance > 0, first try tokenOfOwnerByIndex (Enumerable)
+            // 1. First try tokenOfOwnerByIndex (Standard Enumerable)
             if (bal > 0) {
               try {
                 for (let i = 0; i < Math.min(bal, 20); i++) {
@@ -136,35 +140,68 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
                   foundTokenIds.push(tid.toString());
                 }
               } catch {
-                // Not Enumerable - fallback to automatic Transfer event scanning
+                // Not Enumerable - proceed to multi-strategy discovery
               }
 
-              // If still empty (Non-enumerable like ERC721A), auto scan Transfer events
+              // 2. Transfer Event Logs auto-discovery across candidate providers
               if (foundTokenIds.length === 0 && latestBlock > 0) {
-                try {
-                  // Scan recent blocks for Transfer to this wallet
-                  const fromBlock = Math.max(0, latestBlock - 50000);
-                  const filter = contract.filters.Transfer(null, w.address);
-                  const events = await contract.queryFilter(filter, fromBlock, 'latest');
-                  
-                  for (const ev of events) {
-                    if ('args' in ev && ev.args) {
-                      const tid = ev.args[2]?.toString();
-                      if (tid && !foundTokenIds.includes(tid)) {
-                        // Verify this wallet is still the current owner
-                        try {
-                          const currentOwner = await contract.ownerOf(tid);
-                          if (currentOwner.toLowerCase() === w.address.toLowerCase()) {
-                            foundTokenIds.push(tid);
-                            if (foundTokenIds.length >= bal) break;
+                // Try multiple block ranges (some RPCs limit to 10,000 blocks)
+                const blockRanges = [10000, 30000, 80000];
+                for (const p of candidateProviders) {
+                  if (foundTokenIds.length >= bal) break;
+                  const filterContract = new ethers.Contract(contractAddress.trim(), NFT_TRANSFER_ABI, p);
+
+                  for (const range of blockRanges) {
+                    if (foundTokenIds.length >= bal) break;
+                    try {
+                      const fromBlock = Math.max(0, latestBlock - range);
+                      const filter = filterContract.filters.Transfer(null, w.address);
+                      const events = await filterContract.queryFilter(filter, fromBlock, 'latest');
+
+                      for (const ev of events) {
+                        if ('args' in ev && ev.args) {
+                          const tid = ev.args[2]?.toString();
+                          if (tid && !foundTokenIds.includes(tid)) {
+                            try {
+                              const currentOwner = await contract.ownerOf(tid);
+                              if (currentOwner.toLowerCase() === w.address.toLowerCase()) {
+                                foundTokenIds.push(tid);
+                                if (foundTokenIds.length >= bal) break;
+                              }
+                            } catch {}
                           }
-                        } catch {}
+                        }
                       }
+                    } catch (rangeErr) {
+                      // RPC returned limit error, continue trying smaller or next provider
                     }
                   }
-                } catch (filterErr) {
-                  console.warn('Auto Transfer log query failed:', filterErr);
                 }
+              }
+
+              // 3. Sequential probe fallback for small collections (check first 100 or common IDs if still empty)
+              if (foundTokenIds.length === 0) {
+                try {
+                  // Try to check totalSupply if public
+                  const supplyContract = new ethers.Contract(
+                    contractAddress.trim(),
+                    ['function totalSupply() external view returns (uint256)'],
+                    provider
+                  );
+                  const total = await supplyContract.totalSupply().catch(() => 0n);
+                  const maxProbe = Number(total) > 0 ? Math.min(Number(total), 120) : 0;
+                  if (maxProbe > 0) {
+                    for (let id = 1; id <= maxProbe; id++) {
+                      try {
+                        const owner = await contract.ownerOf(id);
+                        if (owner.toLowerCase() === w.address.toLowerCase()) {
+                          foundTokenIds.push(id.toString());
+                          if (foundTokenIds.length >= bal) break;
+                        }
+                      } catch {}
+                    }
+                  }
+                } catch {}
               }
             }
           } else {
@@ -255,25 +292,70 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
           }
         }
 
-        // On-the-fly Transfer event lookup fallback before failing
+        // On-the-fly Transfer event lookup fallback across candidate providers before failing
         if (tokenType === 'erc721' && idsToTransfer.length === 0) {
           try {
-            const latestBlock = await provider.getBlockNumber();
-            const filter = nftContract.filters.Transfer(null, item.wallet.address);
-            const events = await nftContract.queryFilter(filter, Math.max(0, latestBlock - 50000), 'latest');
-            for (const ev of events) {
-              if ('args' in ev && ev.args) {
-                const tid = ev.args[2]?.toString();
-                if (tid && !idsToTransfer.includes(tid)) {
+            const candidateProviders = getCandidateProviders(chain, customRpc);
+            let latestBlock = 0;
+            for (const p of candidateProviders) {
+              try {
+                latestBlock = await p.getBlockNumber();
+                if (latestBlock > 0) break;
+              } catch {}
+            }
+
+            if (latestBlock > 0) {
+              const ranges = [10000, 30000, 80000];
+              for (const p of candidateProviders) {
+                if (idsToTransfer.length >= item.balance) break;
+                const pContract = new ethers.Contract(contractAddress.trim(), NFT_TRANSFER_ABI, p);
+                for (const range of ranges) {
+                  if (idsToTransfer.length >= item.balance) break;
                   try {
-                    const currentOwner = await nftContract.ownerOf(tid);
-                    if (currentOwner.toLowerCase() === item.wallet.address.toLowerCase()) {
-                      idsToTransfer.push(tid);
-                      if (idsToTransfer.length >= item.balance) break;
+                    const fromBlock = Math.max(0, latestBlock - range);
+                    const filter = pContract.filters.Transfer(null, item.wallet.address);
+                    const events = await pContract.queryFilter(filter, fromBlock, 'latest');
+                    for (const ev of events) {
+                      if ('args' in ev && ev.args) {
+                        const tid = ev.args[2]?.toString();
+                        if (tid && !idsToTransfer.includes(tid)) {
+                          try {
+                            const currentOwner = await nftContract.ownerOf(tid);
+                            if (currentOwner.toLowerCase() === item.wallet.address.toLowerCase()) {
+                              idsToTransfer.push(tid);
+                              if (idsToTransfer.length >= item.balance) break;
+                            }
+                          } catch {}
+                        }
+                      }
                     }
                   } catch {}
                 }
               }
+            }
+
+            // Probe common / small IDs fallback
+            if (idsToTransfer.length === 0) {
+              try {
+                const supplyContract = new ethers.Contract(
+                  contractAddress.trim(),
+                  ['function totalSupply() external view returns (uint256)'],
+                  provider
+                );
+                const total = await supplyContract.totalSupply().catch(() => 0n);
+                const maxProbe = Number(total) > 0 ? Math.min(Number(total), 120) : 0;
+                if (maxProbe > 0) {
+                  for (let id = 1; id <= maxProbe; id++) {
+                    try {
+                      const owner = await nftContract.ownerOf(id);
+                      if (owner.toLowerCase() === item.wallet.address.toLowerCase()) {
+                        idsToTransfer.push(id.toString());
+                        if (idsToTransfer.length >= item.balance) break;
+                      }
+                    } catch {}
+                  }
+                }
+              } catch {}
             }
           } catch {}
         }
@@ -546,15 +628,28 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
                       )}
                     </div>
 
-                    {/* Non-enumerable manual input fallback */}
+                    {/* Non-enumerable manual input fallback with direct explorer jump */}
                     {item.balance > 0 && item.tokenIds.length === 0 && tokenType === 'erc721' && (
-                      <input
-                        type="text"
-                        placeholder="填 TokenID (如 12)"
-                        value={customTokenIds[item.wallet.id] || ''}
-                        onChange={e => setCustomTokenIds(prev => ({ ...prev, [item.wallet.id]: e.target.value }))}
-                        className="w-24 bg-slate-900 border border-amber-600/60 rounded px-1.5 py-0.5 text-[11px] text-amber-200 placeholder-slate-600 focus:outline-none"
-                      />
+                      <div className="flex items-center gap-1.5 bg-amber-950/40 p-1 rounded-md border border-amber-600/40">
+                        <input
+                          type="text"
+                          placeholder="编号 (如 88)"
+                          value={customTokenIds[item.wallet.id] || ''}
+                          onChange={e => setCustomTokenIds(prev => ({ ...prev, [item.wallet.id]: e.target.value }))}
+                          className="w-20 bg-slate-900 border border-amber-600/80 rounded px-1.5 py-0.5 text-[11px] text-amber-200 placeholder-amber-400/50 focus:outline-none focus:border-amber-400 font-mono"
+                          title="输入该钱包所拥有的 NFT Token ID"
+                        />
+                        <a
+                          href={`${chain.explorerUrl}/address/${item.wallet.address}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-amber-300 hover:text-amber-100 underline flex items-center gap-0.5 px-1 py-0.5 rounded hover:bg-amber-900/50"
+                          title="在区块浏览器查看此钱包的 NFT Token 编号"
+                        >
+                          <span>查编号</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
                     )}
 
                     {/* Progress Indicator */}
