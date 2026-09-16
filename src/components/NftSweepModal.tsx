@@ -14,6 +14,7 @@ const NFT_TRANSFER_ABI = [
   'function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256)',
   'function safeTransferFrom(address from, address to, uint256 tokenId) external',
   'function transferFrom(address from, address to, uint256 tokenId) external',
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
   // ERC1155
   'function balanceOf(address account, uint256 id) external view returns (uint256)',
   'function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data) external'
@@ -112,6 +113,12 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
 
       const updatedStatuses: WalletNftStatus[] = [];
 
+      // Get latest block number for querying Transfer logs if needed
+      let latestBlock = 0;
+      try {
+        latestBlock = await provider.getBlockNumber();
+      } catch {}
+
       for (const w of wallets) {
         let bal = 0;
         const foundTokenIds: string[] = [];
@@ -121,15 +128,42 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
             const b = await contract.balanceOf(w.address);
             bal = Number(b);
 
-            // If balance > 0, try to query tokenIds if Enumerable
+            // If balance > 0, first try tokenOfOwnerByIndex (Enumerable)
             if (bal > 0) {
-              for (let i = 0; i < Math.min(bal, 10); i++) {
-                try {
+              try {
+                for (let i = 0; i < Math.min(bal, 20); i++) {
                   const tid = await contract.tokenOfOwnerByIndex(w.address, i);
                   foundTokenIds.push(tid.toString());
-                } catch {
-                  // Not Enumerable, break
-                  break;
+                }
+              } catch {
+                // Not Enumerable - fallback to automatic Transfer event scanning
+              }
+
+              // If still empty (Non-enumerable like ERC721A), auto scan Transfer events
+              if (foundTokenIds.length === 0 && latestBlock > 0) {
+                try {
+                  // Scan recent blocks for Transfer to this wallet
+                  const fromBlock = Math.max(0, latestBlock - 50000);
+                  const filter = contract.filters.Transfer(null, w.address);
+                  const events = await contract.queryFilter(filter, fromBlock, 'latest');
+                  
+                  for (const ev of events) {
+                    if ('args' in ev && ev.args) {
+                      const tid = ev.args[2]?.toString();
+                      if (tid && !foundTokenIds.includes(tid)) {
+                        // Verify this wallet is still the current owner
+                        try {
+                          const currentOwner = await contract.ownerOf(tid);
+                          if (currentOwner.toLowerCase() === w.address.toLowerCase()) {
+                            foundTokenIds.push(tid);
+                            if (foundTokenIds.length >= bal) break;
+                          }
+                        } catch {}
+                      }
+                    }
+                  }
+                } catch (filterErr) {
+                  console.warn('Auto Transfer log query failed:', filterErr);
                 }
               }
             }
@@ -219,6 +253,29 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
           if (manualId) {
             idsToTransfer = manualId.split(/[,，\s]+/).filter(Boolean);
           }
+        }
+
+        // On-the-fly Transfer event lookup fallback before failing
+        if (tokenType === 'erc721' && idsToTransfer.length === 0) {
+          try {
+            const latestBlock = await provider.getBlockNumber();
+            const filter = nftContract.filters.Transfer(null, item.wallet.address);
+            const events = await nftContract.queryFilter(filter, Math.max(0, latestBlock - 50000), 'latest');
+            for (const ev of events) {
+              if ('args' in ev && ev.args) {
+                const tid = ev.args[2]?.toString();
+                if (tid && !idsToTransfer.includes(tid)) {
+                  try {
+                    const currentOwner = await nftContract.ownerOf(tid);
+                    if (currentOwner.toLowerCase() === item.wallet.address.toLowerCase()) {
+                      idsToTransfer.push(tid);
+                      if (idsToTransfer.length >= item.balance) break;
+                    }
+                  } catch {}
+                }
+              }
+            }
+          } catch {}
         }
 
         if (tokenType === 'erc721') {
