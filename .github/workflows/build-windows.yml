@@ -1,0 +1,64 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) { Remove-Item package-lock.json -Force }
+          npm install --include=optional
+          npm install --save-optional @rollup/rollup-win32-x64-msvc
+
+      - name: Build frontend & package Windows Desktop EXE
+        run: npm run package:win
+
+      - name: Compress packaged executable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "release/NFTPublicMintSniper-win32-x64/*" -DestinationPath "NFTPublicMintSniper-Windows-x64.zip" -Force
+
+      - name: Upload Artifact (可在 Actions 详情页直接下载)
+        uses: actions/upload-artifact@v4
+        with:
+          name: NFTPublicMintSniper-Windows-x64
+          path: NFTPublicMintSniper-Windows-x64.zip
+          retention-days: 30
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "NFT Public Mint Sniper Windows 桌面版 (Build ${{ github.run_number }})"
+          draft: false
+          prerelease: false
+          body: |
+            ## NFT Public Mint Sniper (SeaDrop 定时抢购工具 Windows 桌面版)
+            
+            - 针对 Windows x64 系统编译原生桌面客户端
+            - 包含完整的离线 Chromium 引擎，无跨域限制直连 RPC
+            - 支持 Robinhood Chain、Ink (Kraken L2)、Ethereum、Base、OP、Arbitrum、Polygon
+            - 支持多链专属 RPC 隔离配置与实时 Ping 测速检测
+            - 下载下方 ZIP 压缩包解压后，直接双击 `NFTPublicMintSniper.exe` 即可使用，无需安装 Node.js！
+          files: NFTPublicMintSniper-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
