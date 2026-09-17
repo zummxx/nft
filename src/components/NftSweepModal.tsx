@@ -76,6 +76,9 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
   const [useEtherscanFastIndex, setUseEtherscanFastIndex] = useState<boolean>(true);
   const [showEtherscanConfig, setShowEtherscanConfig] = useState<boolean>(false);
 
+  // In-modal confirmation state to replace blocked iframe window.confirm
+  const [showConfirm, setShowConfirm] = useState(false);
+
   useEffect(() => {
     if (defaultContractAddress && !contractAddress) {
       setContractAddress(defaultContractAddress);
@@ -93,6 +96,11 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
       }));
       setWalletStatuses(initial);
       setScanError(null);
+      setShowConfirm(false);
+      // Auto default recipient to wallet #1 if not yet filled
+      if (!recipientAddress && wallets.length > 0) {
+        setRecipientAddress(wallets[0].address);
+      }
     }
   }, [isOpen, wallets]);
 
@@ -280,23 +288,36 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
 
   // 2. Execute Batch Sweep (归集转账)
   const handleExecuteSweep = async () => {
+    setScanError(null);
     const targetRecipient = recipientAddress.trim();
+    if (!targetRecipient) {
+      setScanError('⚠️ 请先填写归集目标接收地址（主钱包 0x...），或点击上方【快捷填入钱包 #1】');
+      const inputEl = document.getElementById('nft-sweep-recipient-input');
+      inputEl?.focus();
+      inputEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     if (!ethers.isAddress(targetRecipient)) {
-      alert('请输入合法的归集目标接收地址 (0x...)');
+      setScanError('⚠️ 接收地址格式不合法，请输入标准 0x 开头的以太坊/EVM 地址！');
+      const inputEl = document.getElementById('nft-sweep-recipient-input');
+      inputEl?.focus();
       return;
     }
 
     const eligibleWallets = walletStatuses.filter(s => s.balance > 0);
     if (eligibleWallets.length === 0) {
-      alert('当前选中的钱包中未持有该 NFT，请先点击「扫描持有数量」。');
+      setScanError('当前各钱包中持有的 NFT 数量为 0，请先点击「扫描各钱包 NFT 数量」。');
       return;
     }
 
-    const confirmMsg = `确定将 ${eligibleWallets.length} 个钱包中的 NFT 全部归集转入以下目标地址吗？\n\n接收地址: ${targetRecipient}\n网络: ${chain.nameZh || chain.name}\n\n注意：每个钱包将发出独立的转账交易并扣除微量 Gas。`;
-    if (!window.confirm(confirmMsg)) {
+    // Step 1 of in-modal confirm (avoids iframe sandbox blocking window.confirm)
+    if (!showConfirm) {
+      setShowConfirm(true);
       return;
     }
 
+    setShowConfirm(false);
     setIsExecuting(true);
     onAddLog('info', `开始执行 NFT 批量归集！目标主钱包: [${targetRecipient}]`);
 
@@ -531,21 +552,50 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
         <div className="p-5 overflow-y-auto space-y-4 text-xs">
           {/* Target Recipient Input */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 font-semibold flex items-center justify-between">
-              <span className="flex items-center gap-1 text-emerald-400">
+            <div className="flex items-center justify-between">
+              <label className="text-slate-300 font-semibold flex items-center gap-1 text-emerald-400">
                 <Wallet className="w-3.5 h-3.5" />
-                归集目标地址 (接收 NFT 的主钱包):
-              </span>
-              <span className="text-[11px] text-slate-500 font-normal">支持任一合法的 EVM 地址</span>
-            </label>
-            <input
-              type="text"
-              id="nft-sweep-recipient-input"
-              value={recipientAddress}
-              onChange={e => setRecipientAddress(e.target.value)}
-              placeholder="0x... (主钱包地址)"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
-            />
+                <span>归集目标地址 (接收 NFT 的主钱包):</span>
+              </label>
+              {wallets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecipientAddress(wallets[0].address);
+                    setScanError(null);
+                    setShowConfirm(false);
+                  }}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-medium bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded transition-colors"
+                  title="自动填入列表中的第一个钱包地址作为接收主钱包"
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-300" />
+                  <span>快捷填入钱包 #1 ({formatAddress(wallets[0].address)})</span>
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                id="nft-sweep-recipient-input"
+                value={recipientAddress}
+                onChange={e => {
+                  setRecipientAddress(e.target.value);
+                  setShowConfirm(false);
+                  if (scanError) setScanError(null);
+                }}
+                placeholder="0x... (接收所有归集 NFT 的主钱包地址)"
+                className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none font-mono text-xs transition-colors ${
+                  !recipientAddress.trim()
+                    ? 'border-amber-500/80 bg-amber-950/10 focus:border-amber-400'
+                    : 'border-slate-700 focus:border-emerald-500'
+                }`}
+              />
+              {!recipientAddress.trim() && (
+                <span className="absolute right-2.5 top-2 text-[10px] text-amber-400 pointer-events-none font-medium">
+                  * 必填接收主地址
+                </span>
+              )}
+            </div>
           </div>
 
           {/* NFT Contract Address & Standard */}
@@ -810,32 +860,57 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between">
+        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-slate-400 text-xs">
-            <ShieldAlert className="w-4 h-4 text-amber-400" />
-            <span>每个有 NFT 的子钱包将消耗极微量 Gas（Arc/Robinhood 约 $0.0001/笔）</span>
+            <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span>
+              {showConfirm
+                ? `⚠️ 请再次核对：即将把 ${totalDiscoveredNfts} 枚 NFT 转入主钱包 [${formatAddress(recipientAddress)}]`
+                : recipientAddress
+                ? `准备归集至主钱包: ${formatAddress(recipientAddress)} (每个小钱包消耗极微量 Gas)`
+                : '每个持有 NFT 的小钱包将自动发起一笔转账交易'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 justify-end">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                if (showConfirm) {
+                  setShowConfirm(false);
+                } else {
+                  onClose();
+                }
+              }}
               disabled={isExecuting}
               className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
             >
-              取消
+              {showConfirm ? '返回修改' : '取消'}
             </button>
             <button
               type="button"
               id="nft-sweep-execute-btn"
               onClick={handleExecuteSweep}
-              disabled={isExecuting || isScanning || totalDiscoveredNfts === 0 || !recipientAddress}
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-lg shadow-purple-900/30 flex items-center gap-2 transition-all"
+              disabled={isExecuting || isScanning}
+              className={`px-5 py-2 rounded-xl text-white text-xs font-bold shadow-lg transition-all flex items-center gap-2 ${
+                isExecuting
+                  ? 'bg-purple-800 opacity-80 cursor-wait'
+                  : showConfirm
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/40 ring-2 ring-amber-400 cursor-pointer animate-pulse scale-[1.02]'
+                  : totalDiscoveredNfts === 0
+                  ? 'bg-slate-700 hover:bg-slate-600 text-slate-300 cursor-pointer'
+                  : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-900/30 cursor-pointer'
+              }`}
             >
               {isExecuting ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   <span>正在逐一归集中...</span>
+                </>
+              ) : showConfirm ? (
+                <>
+                  <Check className="w-4 h-4 text-white" />
+                  <span>确认转入 {formatAddress(recipientAddress)} (点击立即执行)</span>
                 </>
               ) : (
                 <>
