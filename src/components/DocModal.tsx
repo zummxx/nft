@@ -135,12 +135,12 @@ export const DocModal: React.FC<DocModalProps> = ({ onClose }) => {
                 <ExternalLink className="w-3 h-3 text-blue-400" />
               </a>
               <a
-                href="https://arc-scan.org"
+                href="https://arc.etherscan.io"
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-between p-2 rounded bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-colors"
               >
-                <span>· 区块浏览器: <strong className="text-white">arc-scan.org</strong></span>
+                <span>· 区块浏览器: <strong className="text-white">arc.etherscan.io</strong></span>
                 <ExternalLink className="w-3 h-3 text-blue-400" />
               </a>
             </div>
