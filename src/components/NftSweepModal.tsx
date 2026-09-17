@@ -147,7 +147,13 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
             // 1. First try Etherscan Multichain API V2 Fast Index (Instant Token ID discovery)
             if (bal > 0 && useEtherscanFastIndex) {
               try {
-                const esRes = await queryWalletErc721Tokens(chain.id, contractAddress.trim(), w.address, etherscanApiKey);
+                const esRes = await queryWalletErc721Tokens(
+                  chain.id,
+                  contractAddress.trim(),
+                  w.address,
+                  etherscanApiKey,
+                  (sec) => onAddLog('warn', `⏳ Etherscan 接口频控（3秒安全限制），正在安全等待 ${sec} 秒后自动重试...`)
+                );
                 if (esRes && esRes.tokenIds.length > 0) {
                   for (const tid of esRes.tokenIds) {
                     if (!foundTokenIds.includes(tid)) {
@@ -325,7 +331,13 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
         // On-the-fly Etherscan V2 lookup before heavy RPC block queries
         if (tokenType === 'erc721' && idsToTransfer.length === 0 && useEtherscanFastIndex) {
           try {
-            const esRes = await queryWalletErc721Tokens(chain.id, contractAddress.trim(), item.wallet.address, etherscanApiKey);
+            const esRes = await queryWalletErc721Tokens(
+              chain.id,
+              contractAddress.trim(),
+              item.wallet.address,
+              etherscanApiKey,
+              (sec) => onAddLog('warn', `⏳ Etherscan 接口频控（3秒安全限制），正在安全等待 ${sec} 秒后自动重试...`)
+            );
             if (esRes && esRes.tokenIds.length > 0) {
               idsToTransfer = esRes.tokenIds;
               onAddLog('info', `⚡ [Etherscan V2 实时检索] 匹配到钱包 [${formatAddress(item.wallet.address)}] 的 Token ID: #${idsToTransfer.join(', #')}`);
@@ -667,7 +679,7 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
                   </a>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span>💡 官方单个 API Key 免费额度为 5次/秒，支持在 Arc、Robinhood、以太坊主网等无缝通用。若不填则自动回退至链上 RPC 深度扫描。</span>
+                  <span>💡 免费接口具备每秒或3秒冷却频控限制。系统内置自动节流、60秒缓存与遇限流自动等待 3 秒智能重试，单个 Key 通用 Arc、Robinhood、以太坊等 60+ 条链。</span>
                 </div>
               </div>
             )}

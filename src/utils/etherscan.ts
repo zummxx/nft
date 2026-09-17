@@ -80,84 +80,157 @@ export function isEtherscanSupported(chainId: number): boolean {
   return chainId in ETHERSCAN_V2_CHAINS;
 }
 
+// In-memory cache to avoid duplicate calls within the same session (TTL: 60s)
+interface CacheItem {
+  timestamp: number;
+  data: { tokenIds: string[]; totalBalance: number; source: 'etherscan_v2' | 'blockscout' };
+}
+const etherscanCache = new Map<string, CacheItem>();
+
+// Global rate limiting queue for Etherscan requests
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 400; // ~2.5 req/s max default to respect rate limits
+
+async function throttleRequest(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastRequestTime;
+  if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS - elapsed));
+  }
+  lastRequestTime = Date.now();
+}
+
 /**
  * Query ERC721 NFT transfers using Etherscan API V2 (or Blockscout for Ink)
+ * Includes 3-second rate limit backoff and auto-retry
  */
 export async function queryWalletErc721Tokens(
   chainId: number,
   contractAddress: string,
   walletAddress: string,
-  apiKey?: string
+  apiKey?: string,
+  onRateLimitWait?: (seconds: number) => void
 ): Promise<{ tokenIds: string[]; totalBalance: number; source: 'etherscan_v2' | 'blockscout' } | null> {
   const normContract = contractAddress.trim().toLowerCase();
   const normWallet = walletAddress.trim().toLowerCase();
+  const cacheKey = `${chainId}_${normContract}_${normWallet}`;
 
-  try {
-    let url: string;
-    let isBlockscout = false;
+  // Check cache first
+  const cached = etherscanCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 60_000) {
+    return cached.data;
+  }
 
-    if (chainId === 57073) {
-      // Ink uses Blockscout explorer API
-      url = `https://explorer.inkonchain.com/api?module=account&action=tokennfttx&contractaddress=${normContract}&address=${normWallet}&page=1&offset=100`;
-      isBlockscout = true;
-    } else {
-      // Standard Etherscan API V2 Unified Endpoint
-      const keyParam = apiKey && apiKey.trim() ? `&apikey=${apiKey.trim()}` : '';
-      url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&contractaddress=${normContract}&address=${normWallet}&page=1&offset=100&sort=desc${keyParam}`;
-    }
+  let isBlockscout = false;
+  let url: string;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+  if (chainId === 57073) {
+    // Ink uses Blockscout explorer API
+    url = `https://explorer.inkonchain.com/api?module=account&action=tokennfttx&contractaddress=${normContract}&address=${normWallet}&page=1&offset=100`;
+    isBlockscout = true;
+  } else {
+    // Standard Etherscan API V2 Unified Endpoint
+    const keyParam = apiKey && apiKey.trim() ? `&apikey=${apiKey.trim()}` : '';
+    url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&contractaddress=${normContract}&address=${normWallet}&page=1&offset=100&sort=desc${keyParam}`;
+  }
 
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+  // Auto-retry with 3-second backoff if rate limited
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await throttleRequest();
 
-    if (!res.ok) {
-      return null;
-    }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 9000);
 
-    const data = await res.json();
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
 
-    // Check for Etherscan error response
-    if (data.status !== '1' || !Array.isArray(data.result)) {
-      // e.g. "No transactions found" -> empty balance
-      if (data.message === 'No transactions found') {
-        return { tokenIds: [], totalBalance: 0, source: isBlockscout ? 'blockscout' : 'etherscan_v2' };
+      // HTTP 429 Too Many Requests
+      if (res.status === 429) {
+        if (attempt < maxAttempts) {
+          if (onRateLimitWait) onRateLimitWait(3);
+          await new Promise(r => setTimeout(r, 3100)); // 自动等待 3 秒后重试
+          continue;
+        }
+        return null;
       }
-      return null;
-    }
 
-    // Process transactions sequentially to compute active ownership
-    // Sort chronological: older first so inbound is followed by outbound
-    const txs: EtherscanNftTx[] = [...data.result].reverse();
-    const heldTokens = new Set<string>();
+      if (!res.ok) {
+        return null;
+      }
 
-    for (const tx of txs) {
-      if (tx.contractAddress && tx.contractAddress.toLowerCase() !== normContract) {
+      const data = await res.json();
+
+      // Check if Etherscan returned "Max rate limit reached" in JSON body
+      const resStr = typeof data.result === 'string' ? data.result : '';
+      const msgStr = typeof data.message === 'string' ? data.message : '';
+      const isRateLimited =
+        resStr.toLowerCase().includes('max rate limit') ||
+        msgStr.toLowerCase().includes('rate limit') ||
+        resStr.toLowerCase().includes('rate limit');
+
+      if (isRateLimited) {
+        if (attempt < maxAttempts) {
+          if (onRateLimitWait) onRateLimitWait(3);
+          // Etherscan API 3秒频控限制：安全退避等待 3 秒后再次尝试
+          await new Promise(r => setTimeout(r, 3100));
+          continue;
+        }
+        return null;
+      }
+
+      // Check for empty or standard error response
+      if (data.status !== '1' || !Array.isArray(data.result)) {
+        if (data.message === 'No transactions found') {
+          const emptyResult = { tokenIds: [], totalBalance: 0, source: isBlockscout ? ('blockscout' as const) : ('etherscan_v2' as const) };
+          etherscanCache.set(cacheKey, { timestamp: Date.now(), data: emptyResult });
+          return emptyResult;
+        }
+        return null;
+      }
+
+      // Process transactions sequentially to compute active ownership
+      const txs: EtherscanNftTx[] = [...data.result].reverse();
+      const heldTokens = new Set<string>();
+
+      for (const tx of txs) {
+        if (tx.contractAddress && tx.contractAddress.toLowerCase() !== normContract) {
+          continue;
+        }
+        const tid = tx.tokenID?.toString();
+        if (!tid) continue;
+
+        const from = tx.from?.toLowerCase();
+        const to = tx.to?.toLowerCase();
+
+        if (to === normWallet) {
+          heldTokens.add(tid);
+        } else if (from === normWallet) {
+          heldTokens.delete(tid);
+        }
+      }
+
+      const tokenIds = Array.from(heldTokens);
+      const result = {
+        tokenIds,
+        totalBalance: tokenIds.length,
+        source: isBlockscout ? ('blockscout' as const) : ('etherscan_v2' as const)
+      };
+
+      // Save to cache
+      etherscanCache.set(cacheKey, { timestamp: Date.now(), data: result });
+      return result;
+    } catch {
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 1000));
         continue;
       }
-      const tid = tx.tokenID?.toString();
-      if (!tid) continue;
-
-      const from = tx.from?.toLowerCase();
-      const to = tx.to?.toLowerCase();
-
-      if (to === normWallet) {
-        heldTokens.add(tid);
-      } else if (from === normWallet) {
-        heldTokens.delete(tid);
-      }
+      return null;
     }
-
-    const tokenIds = Array.from(heldTokens);
-    return {
-      tokenIds,
-      totalBalance: tokenIds.length,
-      source: isBlockscout ? 'blockscout' : 'etherscan_v2'
-    };
-  } catch {
-    return null;
   }
+
+  return null;
 }
 
 /**
