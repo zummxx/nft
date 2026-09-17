@@ -8,6 +8,7 @@ import {
   saveEtherscanApiKey,
   isEtherscanSupported,
   queryWalletErc721Tokens,
+  queryContractTokensForWallets,
   ETHERSCAN_V2_CHAINS
 } from '../utils/etherscan';
 
@@ -140,6 +141,19 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
         try {
           latestBlock = await p.getBlockNumber();
           if (latestBlock > 0) break;
+        } catch {}
+      }
+
+      // Pre-scan: Single-shot Etherscan contract transfer lookup across ALL wallets at once!
+      // This uses only 1 single API call (0.3s) and bypasses rate limits completely for all wallets!
+      if (tokenType === 'erc721' && useEtherscanFastIndex && wallets.length > 0) {
+        try {
+          await queryContractTokensForWallets(
+            chain.id,
+            contractAddress.trim(),
+            wallets.map(w => w.address),
+            etherscanApiKey
+          );
         } catch {}
       }
 

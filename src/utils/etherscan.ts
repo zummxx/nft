@@ -269,3 +269,83 @@ export async function batchQueryEtherscanTokens(
 
   return results;
 }
+
+/**
+ * Single-shot Contract Sweep Discovery:
+ * Instead of querying 50 wallets individually (which would trigger rate limit waits),
+ * we query the contract's recent NFT transfers in a single shot, and map out tokens
+ * for all target wallets simultaneously in memory!
+ */
+export async function queryContractTokensForWallets(
+  chainId: number,
+  contractAddress: string,
+  walletAddresses: string[],
+  apiKey?: string
+): Promise<Map<string, string[]> | null> {
+  if (walletAddresses.length === 0) return new Map();
+  const targetSet = new Set(walletAddresses.map(a => a.trim().toLowerCase()));
+  const normContract = contractAddress.trim().toLowerCase();
+
+  try {
+    let url: string;
+    let isBlockscout = false;
+    if (chainId === 57073) {
+      url = `https://explorer.inkonchain.com/api?module=account&action=tokennfttx&contractaddress=${normContract}&page=1&offset=1000`;
+      isBlockscout = true;
+    } else {
+      const keyParam = apiKey && apiKey.trim() ? `&apikey=${apiKey.trim()}` : '';
+      url = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=account&action=tokennfttx&contractaddress=${normContract}&page=1&offset=1000&sort=desc${keyParam}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 9000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== '1' || !Array.isArray(data.result)) return null;
+
+    // Map of wallet -> Set of tokenIds
+    const walletTokens = new Map<string, Set<string>>();
+    for (const addr of targetSet) {
+      walletTokens.set(addr, new Set());
+    }
+
+    const txs: EtherscanNftTx[] = [...data.result].reverse();
+    for (const tx of txs) {
+      if (tx.contractAddress && tx.contractAddress.toLowerCase() !== normContract) continue;
+      const tid = tx.tokenID?.toString();
+      if (!tid) continue;
+      const from = tx.from?.toLowerCase();
+      const to = tx.to?.toLowerCase();
+
+      if (to && targetSet.has(to)) {
+        walletTokens.get(to)?.add(tid);
+      }
+      if (from && targetSet.has(from)) {
+        walletTokens.get(from)?.delete(tid);
+      }
+    }
+
+    const resultMap = new Map<string, string[]>();
+    for (const [addr, tokenSet] of walletTokens.entries()) {
+      const tokenIds = Array.from(tokenSet);
+      resultMap.set(addr, tokenIds);
+      // Pre-warm individual cache as well
+      const cacheKey = `${chainId}_${normContract}_${addr}`;
+      etherscanCache.set(cacheKey, {
+        timestamp: Date.now(),
+        data: {
+          tokenIds,
+          totalBalance: tokenIds.length,
+          source: isBlockscout ? ('blockscout' as const) : ('etherscan_v2' as const)
+        }
+      });
+    }
+
+    return resultMap;
+  } catch {
+    return null;
+  }
+}
