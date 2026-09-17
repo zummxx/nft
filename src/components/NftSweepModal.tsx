@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, ShieldAlert, CheckCircle2, AlertTriangle, RefreshCw, ArrowRight, Wallet, Check, ExternalLink, HelpCircle } from 'lucide-react';
+import { X, Send, ShieldAlert, CheckCircle2, AlertTriangle, RefreshCw, ArrowRight, Wallet, Check, ExternalLink, HelpCircle, Zap, Key, Sparkles } from 'lucide-react';
 import { WalletAccount, ChainConfig } from '../types';
 import { ethers } from 'ethers';
 import { getProvider, getCandidateProviders, formatAddress } from '../utils/seadrop';
+import {
+  getSavedEtherscanApiKey,
+  saveEtherscanApiKey,
+  isEtherscanSupported,
+  queryWalletErc721Tokens,
+  ETHERSCAN_V2_CHAINS
+} from '../utils/etherscan';
 
 // Comprehensive ABI for checking and transferring ERC721 & ERC1155
 const NFT_TRANSFER_ABI = [
@@ -63,6 +70,11 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
 
   // Manual token ID inputs if contract doesn't support tokenOfOwnerByIndex
   const [customTokenIds, setCustomTokenIds] = useState<{ [walletId: string]: string }>({});
+
+  // Etherscan Multichain V2 Fast Index states
+  const [etherscanApiKey, setEtherscanApiKey] = useState<string>(() => getSavedEtherscanApiKey());
+  const [useEtherscanFastIndex, setUseEtherscanFastIndex] = useState<boolean>(true);
+  const [showEtherscanConfig, setShowEtherscanConfig] = useState<boolean>(false);
 
   useEffect(() => {
     if (defaultContractAddress && !contractAddress) {
@@ -132,8 +144,26 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
             const b = await contract.balanceOf(w.address);
             bal = Number(b);
 
-            // 1. First try tokenOfOwnerByIndex (Standard Enumerable)
-            if (bal > 0) {
+            // 1. First try Etherscan Multichain API V2 Fast Index (Instant Token ID discovery)
+            if (bal > 0 && useEtherscanFastIndex) {
+              try {
+                const esRes = await queryWalletErc721Tokens(chain.id, contractAddress.trim(), w.address, etherscanApiKey);
+                if (esRes && esRes.tokenIds.length > 0) {
+                  for (const tid of esRes.tokenIds) {
+                    if (!foundTokenIds.includes(tid)) {
+                      foundTokenIds.push(tid);
+                      if (foundTokenIds.length >= bal) break;
+                    }
+                  }
+                  if (foundTokenIds.length > 0) {
+                    onAddLog('info', `⚡ [Etherscan V2] 钱包 ${formatAddress(w.address)} 极速索引到 ${foundTokenIds.length} 枚 NFT (#${foundTokenIds.slice(0, 4).join(', #')}${foundTokenIds.length > 4 ? '...' : ''})`);
+                  }
+                }
+              } catch {}
+            }
+
+            // 2. Standard tokenOfOwnerByIndex (Standard Enumerable) if not discovered yet
+            if (bal > 0 && foundTokenIds.length === 0) {
               try {
                 for (let i = 0; i < Math.min(bal, 20); i++) {
                   const tid = await contract.tokenOfOwnerByIndex(w.address, i);
@@ -290,6 +320,17 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
           if (manualId) {
             idsToTransfer = manualId.split(/[,，\s]+/).filter(Boolean);
           }
+        }
+
+        // On-the-fly Etherscan V2 lookup before heavy RPC block queries
+        if (tokenType === 'erc721' && idsToTransfer.length === 0 && useEtherscanFastIndex) {
+          try {
+            const esRes = await queryWalletErc721Tokens(chain.id, contractAddress.trim(), item.wallet.address, etherscanApiKey);
+            if (esRes && esRes.tokenIds.length > 0) {
+              idsToTransfer = esRes.tokenIds;
+              onAddLog('info', `⚡ [Etherscan V2 实时检索] 匹配到钱包 [${formatAddress(item.wallet.address)}] 的 Token ID: #${idsToTransfer.join(', #')}`);
+            }
+          } catch {}
         }
 
         // On-the-fly Transfer event lookup fallback across candidate providers before failing
@@ -557,6 +598,80 @@ export const NftSweepModal: React.FC<NftSweepModalProps> = ({
               />
             </div>
           )}
+
+          {/* Etherscan API V2 Multichain Fast Index Section */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Zap className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold text-xs">Etherscan 多链统一 API 极速索引 (V2)</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-mono">
+                      {chain.nameZh || chain.name} (ID: {chain.id}) {isEtherscanSupported(chain.id) ? '已原生支持' : '兼容'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    基于 Etherscan V2 统一多链端点，无需循环翻查区块日志，1 秒极速抓取具体 Token ID
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useEtherscanFastIndex}
+                    onChange={e => setUseEtherscanFastIndex(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-0 w-3.5 h-3.5"
+                  />
+                  <span className="text-slate-300 text-xs font-medium">启用加速</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowEtherscanConfig(!showEtherscanConfig)}
+                  className="text-xs text-purple-400 hover:text-purple-300 underline font-medium"
+                >
+                  {showEtherscanConfig ? '收起配置' : (etherscanApiKey ? '已配置 Key' : '配置 Key')}
+                </button>
+              </div>
+            </div>
+
+            {(showEtherscanConfig || !etherscanApiKey) && (
+              <div className="pt-2.5 border-t border-slate-800/80 space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 text-slate-400 font-medium whitespace-nowrap">
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    <span>API Key:</span>
+                  </div>
+                  <input
+                    type="password"
+                    value={etherscanApiKey}
+                    onChange={e => {
+                      setEtherscanApiKey(e.target.value);
+                      saveEtherscanApiKey(e.target.value);
+                    }}
+                    placeholder="填入 Etherscan API Key（单个 Key 通用 Arc、Robinhood、以太坊等 60+ 条链）"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 placeholder-slate-600 text-xs font-mono focus:outline-none focus:border-amber-500"
+                  />
+                  <a
+                    href="https://etherscan.io/myapikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 text-xs flex items-center gap-1 font-medium transition-colors whitespace-nowrap"
+                  >
+                    <span>免费获取 Key</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>💡 官方单个 API Key 免费额度为 5次/秒，支持在 Arc、Robinhood、以太坊主网等无缝通用。若不填则自动回退至链上 RPC 深度扫描。</span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Scan Control Action */}
           <div className="flex items-center justify-between bg-slate-950/80 p-3 rounded-xl border border-slate-800">
